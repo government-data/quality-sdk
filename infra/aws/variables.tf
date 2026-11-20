@@ -5,9 +5,9 @@ variable "region" {
 }
 
 variable "project" {
-  description = "Prefix of every resource. `quality` keeps it apart from the orquestador's `orquestador-*` resources in the same account."
+  description = "Prefix of every resource. `quality-data` keeps it apart from the orquestador's `orquestador-*` resources in the same account."
   type        = string
-  default     = "quality"
+  default     = "quality-data"
 }
 
 variable "modules" {
@@ -19,8 +19,8 @@ variable "modules" {
   EOT
   type        = map(list(string))
   default = {
-    calidad     = ["api", "web"]
-    orquestador = ["api", "web"]
+    "quality-data" = ["api", "web"]
+    orquestador    = ["api", "web"]
   }
 }
 

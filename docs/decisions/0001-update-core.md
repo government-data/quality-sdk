@@ -8,9 +8,9 @@ Status: proposed
 
 ## Context
 
-Quality Data (`calidad`) runs on local installations, together with its
+Quality Data (`quality-data`) runs on local installations, together with its
 modules (orquestador, Grafana, RustFS, Trino) in one Docker Compose. People
-reach every module from calidad, signing in with OIDC. Updates bring new
+reach every module from quality-data, signing in with OIDC. Updates bring new
 container versions, database migrations and security patches; none may lose
 data, and a failed update must recover by itself.
 
@@ -20,7 +20,8 @@ got. Licenses and tenants are dropped. What remains is the question licensing
 answered on the side: **who may update**. The answer is now: an installation
 that has the SDK installed and enrolled, until its enrolment is revoked.
 
-The update daemon (`calidad/crates/updater`) already does the local part well
+The update daemon (`crates/updater` in the `quality-data` repository) already
+does the local part well
 (prepare, drain, back up, apply, verify, roll back, restore, critical) and is
 kept; its source of versions changes.
 
@@ -50,14 +51,14 @@ The agent trades the certificate for one-hour credentials of the
 serial; the installation stops pulling within the hour. An installation can
 write reports only under `reports/<its CN>/`.
 
-Inside an installation, who may approve or start an update is calidad's
+Inside an installation, who may approve or start an update is quality-data's
 permission (administrators by default) and `sudo` on the server, with the
 update policy that exists today (manual, approval, automatic in a window).
 
 ### What a version is: the signed index
 
-`index/<channel>.json` lists **platform versions**: calidad plus the version
-of each module, tested together, every image by digest, every package with its
+`index/<channel>.json` lists **platform versions**: quality-data plus the
+version of each module, tested together, every image by digest, every package with its
 SHA-256. Each carries `upgrade_from`, `reversible` and its rollout (`pilot`,
 a percentage, or `all`) and `paused`. `index/<channel>.json.sig` is its KMS
 signature; the agent verifies it with the public key pinned at enrolment and
@@ -85,7 +86,8 @@ the maintenance window.
    refusal. Recorded below.
 3. **`index-model` crate**: the index and the platform version, pure, with
    signature verification and the rollout stage; no I/O.
-4. **Extract the update engine** from `calidad/crates/updater` into this
+4. **Extract the update engine** from `crates/updater` of the `quality-data`
+   repository into this
    repo, unchanged, behind its `Host` trait.
 5. **AWS adapter of the agent**: credentials through Roles Anywhere, read and
    verify the index, pull by digest, write reports.

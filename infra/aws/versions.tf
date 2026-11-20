@@ -8,10 +8,10 @@ terraform {
   }
   # Remote state, once its bucket and lock table exist (decision 0001, Open):
   # backend "s3" {
-  #   bucket         = "quality-terraform-state"
+  #   bucket         = "quality-data-terraform-state"
   #   key            = "updates/terraform.tfstate"
   #   region         = "us-east-1"
-  #   dynamodb_table = "quality-terraform-lock"
+  #   dynamodb_table = "quality-data-terraform-lock"
   #   encrypt        = true
   # }
 }
