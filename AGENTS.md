@@ -7,7 +7,7 @@ working, for this repo.
 ## What this is
 
 quality-sdk: the core that installs, configures and updates Quality Data
-(`quality-data`) and its modules (orquestador, Grafana, RustFS, Trino) on local
+(`quality-data`) and its modules (orchestrator, Grafana, RustFS, Trino) on local
 installations, from versions published in AWS. One installation is one
 organisation (no tenants) and there are no licenses: an installation may
 update while its SDK enrolment is valid.
@@ -16,6 +16,7 @@ update while its SDK enrolment is valid.
 - `crates/`: the SDK in Rust (manifest, update engine, agent, CLI), as the
   decisions add them.
 - `docs/decisions/`: the design. Every change belongs to a decision.
+  **Internal: ignored by git, never committed, pushed or published.**
 
 ## Before you change anything
 
@@ -68,7 +69,7 @@ update while its SDK enrolment is valid.
 
 ## Language
 
-**English only. Nothing in Spanish**, anywhere in this repository:
+**English only. Nothing in Spanish**, with the one exception at the end:
 
 - Code, identifiers, file and directory names, commands and their flags
   (`quality-data install`, not `quality-data instalar`), configuration keys
@@ -77,10 +78,19 @@ update while its SDK enrolment is valid.
 - Every text a person reads: CLI messages, errors, logs, notices and reports.
 - Commit messages, branch names, pull requests and issues.
 
-Product and project names stay as they are (`quality-data`, `orquestador`); they
-are names, not text. Code brought from the `quality-data` or
-`knime-orchestador` repositories is translated to English when it comes
-in.
+Product and module names are English too (`quality-data`, `orchestrator`).
+The only Spanish allowed is an identifier that already exists outside this
+repository and cannot be renamed from here, quoted literally: the AWS
+profile `orquestador`, the legacy `orquestador-*` AWS resources, the
+`knime-orchestador` repositories. Code brought from other repositories is
+translated to English when it comes in.
+
+**The one exception is documentation for people who use the product**: the
+content of the `docs` module (user and administrator guide) and its
+translations may be in Spanish. It covers that content only: the docs
+module's code, configuration, build and comments, and the technical
+documentation of every repository (decisions, READMEs, AGENTS.md), stay in
+English.
 
 ## Size limits
 
@@ -117,6 +127,8 @@ cargo test -p <crate> --locked
 - Do not add a service a decision does not name: the AWS side is S3, ECR,
   KMS and IAM Roles Anywhere until a decision says otherwise.
 - Do not bring back licenses, plans or tenants.
+- Do not commit, quote or link a decision in anything public: code
+  comments may name it by number ("decision 0001"), never copy its content.
 - Do not weaken a test, a lint or a check to make it pass.
 - Do not touch the Terraform state of another project
   (`knime-orchestador*/infra/aws`): read it, never change it.

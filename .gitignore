@@ -8,3 +8,6 @@ crash.log
 *.pem
 *.key
 *.crl
+
+# Decisions are internal: they live in this folder, never in git.
+docs/decisions/
