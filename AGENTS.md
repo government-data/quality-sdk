@@ -68,7 +68,7 @@ update while its SDK enrolment is valid.
 
 ## Language
 
-**English only. Nothing in Spanish**, anywhere in this repository:
+**English only. Nothing in Spanish**, with the one exception at the end:
 
 - Code, identifiers, file and directory names, commands and their flags
   (`quality-data install`, not `quality-data instalar`), configuration keys
@@ -83,6 +83,13 @@ repository and cannot be renamed from here, quoted literally: the AWS
 profile `orquestador`, the legacy `orquestador-*` AWS resources, the
 `knime-orchestador` repositories. Code brought from other repositories is
 translated to English when it comes in.
+
+**The one exception is documentation for people who use the product**: the
+content of the `docs` module (user and administrator guide) and its
+translations may be in Spanish. It covers that content only: the docs
+module's code, configuration, build and comments, and the technical
+documentation of every repository (decisions, READMEs, AGENTS.md), stay in
+English.
 
 ## Size limits
 
