@@ -58,9 +58,9 @@ update policy that exists today (manual, approval, automatic in a window).
 ### What a version is: the signed index
 
 `index/<channel>.json` lists **platform versions**: quality-data plus the
-version of each module, tested together, every image by digest, every package with its
-SHA-256. Each carries `upgrade_from`, `reversible` and its rollout (`pilot`,
-a percentage, or `all`) and `paused`. `index/<channel>.json.sig` is its KMS
+version of each module, tested together, every image by digest, every
+package with its SHA-256. Each carries `upgrade_from`, `reversible`, its
+rollout (`pilot`, a percentage, or `all`) and `paused`. `index/<channel>.json.sig` is its KMS
 signature; the agent verifies it with the public key pinned at enrolment and
 **never trusts an index that does not verify**, nor one older than the one it
 last saw (no downgrade by replaying an old index).
