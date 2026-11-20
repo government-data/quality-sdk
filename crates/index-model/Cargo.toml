@@ -1,0 +1,24 @@
+[package]
+name = "index-model"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# The signed version index (decision 0001): its model, its validation, its
+# signature check and which version an installation is offered. Pure: no I/O.
+[dependencies]
+base64.workspace = true
+hex.workspace = true
+p256.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true

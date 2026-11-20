@@ -1,0 +1,35 @@
+# The SDK's Rust workspace. Each crate lives under `crates/` and opts into the
+# shared package fields, lints and dependency versions below.
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.90"
+license = "MIT"
+authors = ["quality-data"]
+repository = "https://github.com/quality-data/quality-sdk"
+
+[workspace.dependencies]
+base64 = "0.22"
+hex = "0.4"
+# ECDSA P-256 signatures, as KMS makes them (ECC_NIST_P256, ECDSA_SHA_256).
+p256 = "0.13"
+semver = { version = "1", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+todo = "warn"
+dbg_macro = "warn"
+# Functions over `too-many-lines-threshold` (clippy.toml) fail CI.
+too_many_lines = "warn"
