@@ -16,6 +16,7 @@ update while its SDK enrolment is valid.
 - `crates/`: the SDK in Rust (manifest, update engine, agent, CLI), as the
   decisions add them.
 - `docs/decisions/`: the design. Every change belongs to a decision.
+  **Internal: ignored by git, never committed, pushed or published.**
 
 ## Before you change anything
 
@@ -126,6 +127,8 @@ cargo test -p <crate> --locked
 - Do not add a service a decision does not name: the AWS side is S3, ECR,
   KMS and IAM Roles Anywhere until a decision says otherwise.
 - Do not bring back licenses, plans or tenants.
+- Do not commit, quote or link a decision in anything public: code
+  comments may name it by number ("decision 0001"), never copy its content.
 - Do not weaken a test, a lint or a check to make it pass.
 - Do not touch the Terraform state of another project
   (`knime-orchestador*/infra/aws`): read it, never change it.
