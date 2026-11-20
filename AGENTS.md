@@ -7,7 +7,7 @@ working, for this repo.
 ## What this is
 
 quality-sdk: the core that installs, configures and updates Quality Data
-(`quality-data`) and its modules (orquestador, Grafana, RustFS, Trino) on local
+(`quality-data`) and its modules (orchestrator, Grafana, RustFS, Trino) on local
 installations, from versions published in AWS. One installation is one
 organisation (no tenants) and there are no licenses: an installation may
 update while its SDK enrolment is valid.
@@ -77,10 +77,12 @@ update while its SDK enrolment is valid.
 - Every text a person reads: CLI messages, errors, logs, notices and reports.
 - Commit messages, branch names, pull requests and issues.
 
-Product and project names stay as they are (`quality-data`, `orquestador`); they
-are names, not text. Code brought from the `quality-data` or
-`knime-orchestador` repositories is translated to English when it comes
-in.
+Product and module names are English too (`quality-data`, `orchestrator`).
+The only Spanish allowed is an identifier that already exists outside this
+repository and cannot be renamed from here, quoted literally: the AWS
+profile `orquestador`, the legacy `orquestador-*` AWS resources, the
+`knime-orchestador` repositories. Code brought from other repositories is
+translated to English when it comes in.
 
 ## Size limits
 

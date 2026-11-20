@@ -3,7 +3,7 @@
 # uploads packages, signs the index with KMS and writes it.
 #
 # GitHub's OIDC provider already exists in this account (one per URL), created
-# by the orquestador's Terraform: it is read, not created.
+# by the orchestrator's Terraform: it is read, not created.
 
 data "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"

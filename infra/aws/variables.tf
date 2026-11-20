@@ -5,7 +5,7 @@ variable "region" {
 }
 
 variable "project" {
-  description = "Prefix of every resource. `quality-data` keeps it apart from the orquestador's `orquestador-*` resources in the same account."
+  description = "Prefix of every resource. `quality-data` keeps it apart from the orchestrator's existing `orquestador-*` resources in the same account."
   type        = string
   default     = "quality-data"
 }
@@ -20,7 +20,7 @@ variable "modules" {
   type        = map(list(string))
   default = {
     "quality-data" = ["api", "web"]
-    orquestador    = ["api", "web"]
+    orchestrator   = ["api", "web"]
   }
 }
 

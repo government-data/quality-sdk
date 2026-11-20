@@ -2,7 +2,7 @@
 
 Decision [0001](../../docs/decisions/0001-update-core.md). Managed resources
 only: S3 (index, packages, reports), ECR (images), KMS (index signature) and
-IAM Roles Anywhere (who may pull). It lives beside the orquestador's resources
+IAM Roles Anywhere (who may pull). It lives beside the orchestrator's resources
 in the same account with the `quality-data` prefix and reads, never creates, the
 GitHub OIDC provider they share.
 

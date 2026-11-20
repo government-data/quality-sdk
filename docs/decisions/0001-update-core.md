@@ -9,12 +9,12 @@ Status: proposed
 ## Context
 
 Quality Data (`quality-data`) runs on local installations, together with its
-modules (orquestador, Grafana, RustFS, Trino) in one Docker Compose. People
+modules (orchestrator, Grafana, RustFS, Trino) in one Docker Compose. People
 reach every module from quality-data, signing in with OIDC. Updates bring new
 container versions, database migrations and security patches; none may lose
 data, and a failed update must recover by itself.
 
-Until now this lived in the orquestador's licensing cloud: a service with
+Until now this lived in the orchestrator's licensing cloud: a service with
 keys, plans, permits and payments decided which version each installation
 got. Licenses and tenants are dropped. What remains is the question licensing
 answered on the side: **who may update**. The answer is now: an installation
