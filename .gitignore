@@ -11,3 +11,5 @@ crash.log
 
 # Decisions are internal: they live in this folder, never in git.
 docs/decisions/
+# Public keys of test fixtures are not secrets.
+!crates/*/tests/fixtures/**/*.pub.pem
