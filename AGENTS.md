@@ -67,9 +67,17 @@ update while its SDK enrolment is valid.
 
 ## Language
 
-- Code, identifiers, file names, comments and documentation: **English**.
-- Every text a person reads (CLI messages, notices): **Spanish and
-  English**, with English keys. No user-facing string literals in code.
+**English only. Nothing in Spanish**, anywhere in this repository:
+
+- Code, identifiers, file and directory names, commands and their flags
+  (`calidad install`, not `calidad instalar`), configuration keys and paths.
+- Comments, documentation, decisions, READMEs and Terraform descriptions.
+- Every text a person reads: CLI messages, errors, logs, notices and reports.
+- Commit messages, branch names, pull requests and issues.
+
+Product and project names stay as they are (`calidad`, `orquestador`); they
+are names, not text. Code brought from `calidad` or `knime-orchestador` is
+translated to English when it comes in.
 
 ## Size limits
 
