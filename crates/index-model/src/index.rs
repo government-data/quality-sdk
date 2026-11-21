@@ -3,17 +3,19 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use semver::{Version, VersionReq};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::IndexError;
 
 /// The only index format this crate reads. A field that restricts who may
 /// take a version comes with a new format, so an older agent refuses the
-/// index rather than ignoring the restriction.
+/// index rather than ignoring the restriction. An optional field that does
+/// not (a module's `provides` and `requires`, which order its packages) is
+/// added within the format: an older agent ignores it.
 pub const FORMAT: u32 = 1;
 
 /// A channel's index: `index/<channel>.json`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Index {
     pub format: u32,
     pub channel: Channel,
@@ -26,7 +28,7 @@ pub struct Index {
 }
 
 /// Where a version is published.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Channel {
     /// Platform versions.
@@ -36,7 +38,7 @@ pub enum Channel {
 }
 
 /// One platform version: what goes together, and to whom.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlatformVersion {
     pub version: Version,
     /// The installed versions it can be applied on.
@@ -63,7 +65,7 @@ fn yes() -> bool {
 }
 
 /// Who gets a version: the pilots, then a share of the rest.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rollout {
     /// The pilot installations, as [`crate::installation_hash`] of their ids:
     /// the index never names an installation.
@@ -75,17 +77,24 @@ pub struct Rollout {
 }
 
 /// A module at one version.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Module {
     pub version: Version,
     /// Its images by name, each pinned by digest
     /// (`<repository>@sha256:<64 hex>`).
     pub images: BTreeMap<String, String>,
     pub package: Package,
+    /// The capabilities it provides and requires, by name (decision 0002):
+    /// a platform version's packages apply in their order, a module after
+    /// those that provide what it requires. Optional; none when absent.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub provides: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<String>,
 }
 
 /// A module's package in the release bucket.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
     /// Its key, under `packages/`.
     pub key: String,
@@ -176,6 +185,15 @@ impl Module {
         }
         if !is_sha256(&self.package.sha256) {
             return Err(invalid(format!("{at}: package SHA-256")));
+        }
+        for (field, names) in [("provides", &self.provides), ("requires", &self.requires)] {
+            let mut seen = BTreeSet::new();
+            if let Some(n) = names
+                .iter()
+                .find(|n| n.trim().is_empty() || !seen.insert(*n))
+            {
+                return Err(invalid(format!("{at}: {field} {n:?} is empty or twice")));
+            }
         }
         Ok(())
     }
