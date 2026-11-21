@@ -25,7 +25,7 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 
 use crate::policy::Orders;
-use crate::state::{Outcome, OutcomeKind, Phase, State};
+use crate::state::{Modules, Outcome, OutcomeKind, Phase, State};
 
 mod apply;
 mod drain;
@@ -37,12 +37,12 @@ use drain::{back_up, drain};
 use prepare::waiting;
 use recover::{restore, roll_back};
 
-/// What the cloud offers this installation.
+/// What the cloud offers this installation: a platform version and its
+/// modules (decision 0003).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Offer {
     pub version: String,
-    pub api: String,
-    pub web: String,
+    pub modules: Modules,
     pub package_url: String,
     pub package_sha256: String,
     pub notes: String,
@@ -68,12 +68,11 @@ pub struct Drain {
     pub scheduled_soon: u64,
 }
 
-/// What is installed now (from `.env`).
+/// What is installed now: the platform version and its modules.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Installed {
     pub version: String,
-    pub api: String,
-    pub web: String,
+    pub modules: Modules,
 }
 
 /// The world: the cloud, the API, Docker and the files.
@@ -111,7 +110,8 @@ pub trait Host {
     fn manifest(&self, package: &Path) -> Result<Vec<String>, String>;
     /// Remove `remove` and put `package`'s files.
     fn put_package(&self, package: &Path, remove: &[String]) -> Result<(), String>;
-    fn put_version(&self, version: &str, api: &str, web: &str) -> Result<(), String>;
+    /// Put `version` with every one of its modules' images.
+    fn put_version(&self, version: &str, modules: &Modules) -> Result<(), String>;
     fn start(&self) -> Result<(), String>;
     /// That it answers; with `version`, that it is that one.
     fn healthy(&self, version: Option<&str>) -> Result<(), String>;

@@ -8,6 +8,7 @@ use chrono::TimeZone;
 
 use super::*;
 use crate::policy::{Mode, Policy, Request, Window};
+use crate::state::Module;
 
 mod preparing;
 mod recovering;
@@ -28,6 +29,8 @@ struct Fake {
     /// The version brought up.
     up: RefCell<String>,
     calls: RefCell<Vec<String>>,
+    /// Every `put_version`, with the modules it was given.
+    put: RefCell<Vec<(String, Modules)>>,
     saved: RefCell<Vec<State>>,
     maintenance: Cell<bool>,
 }
@@ -67,11 +70,28 @@ impl Fake {
     }
 }
 
+/// A platform version of two modules, one with two images.
+fn modules(version: &str) -> Modules {
+    let module = |images: &[(&str, &str)]| Module {
+        version: version.into(),
+        images: images
+            .iter()
+            .map(|(name, repo)| (name.to_string(), format!("{repo}:{version}@sha256:a")))
+            .collect(),
+    };
+    Modules::from([
+        (
+            "quality-data".into(),
+            module(&[("api", "r/api"), ("web", "r/web")]),
+        ),
+        ("orchestrator".into(), module(&[("server", "r/orch")])),
+    ])
+}
+
 fn offer(version: &str) -> Offer {
     Offer {
         version: version.into(),
-        api: format!("r/api:{version}@sha256:a"),
-        web: format!("r/web:{version}@sha256:b"),
+        modules: modules(version),
         package_url: format!("https://s3/quality-data-{version}.tar.gz"),
         package_sha256: "abc".into(),
         notes: "what is new".into(),
@@ -148,8 +168,7 @@ impl Host for Fake {
     fn installed(&self) -> Result<Installed, String> {
         Ok(Installed {
             version: "1.2.0".into(),
-            api: "r/api:1.2.0".into(),
-            web: "r/web:1.2.0".into(),
+            modules: modules("1.2.0"),
         })
     }
     fn back_up(&self) -> Result<PathBuf, String> {
@@ -181,8 +200,11 @@ impl Host for Fake {
         ));
         Ok(())
     }
-    fn put_version(&self, version: &str, _api: &str, _web: &str) -> Result<(), String> {
+    fn put_version(&self, version: &str, modules: &Modules) -> Result<(), String> {
         self.note(format!("put_version:{version}"));
+        self.put
+            .borrow_mut()
+            .push((version.into(), modules.clone()));
         *self.up.borrow_mut() = version.into();
         Ok(())
     }

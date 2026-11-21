@@ -115,3 +115,69 @@ fn a_cut_halfway_goes_on_from_the_saved_phase() {
         assert!(!f.maintenance.get());
     }
 }
+
+#[test]
+fn going_back_puts_every_module_of_the_previous_version() {
+    let f = Fake::new().failing("healthy:1.3.0");
+    let mut s = State::new("1.2.0");
+    run(&f, &mut s, Who::Person);
+    assert_eq!(s.last.as_ref().unwrap().kind, OutcomeKind::RolledBack);
+    assert_eq!(
+        *f.put.borrow(),
+        [
+            ("1.3.0".to_string(), modules("1.3.0")),
+            ("1.2.0".to_string(), modules("1.2.0")),
+        ]
+    );
+}
+
+#[test]
+fn an_update_the_older_engine_left_halfway_goes_on() {
+    // Cut while applying, with a state file of the engine before modules.
+    let older = serde_json::json!({
+        "phase": "applying",
+        "target": {
+            "version": "1.3.0",
+            "api": "r/api:1.3.0@sha256:a",
+            "web": "r/web:1.3.0@sha256:b",
+            "package": "/packages/1.3.0.tar.gz"
+        },
+        "previous": {
+            "version": "1.2.0",
+            "api": "r/api:1.2.0@sha256:c",
+            "web": "r/web:1.2.0@sha256:d",
+            "package": "/releases/1.2.0.tar",
+            "manifest": ["compose.yml", "assets/app-1.2.0.js"]
+        },
+        "backup": "/backups/quality-data-1",
+        "installed_version": "1.2.0"
+    });
+    let legacy = |version: &str, api: &str, web: &str| {
+        let images = [("api", api), ("web", web)]
+            .map(|(n, i)| (n.to_string(), i.to_string()))
+            .into();
+        let module = Module {
+            version: version.into(),
+            images,
+        };
+        Modules::from([("quality-data".to_string(), module)])
+    };
+
+    // It finishes in the new version, with the images the file named.
+    let f = Fake::new();
+    let mut s: State = serde_json::from_value(older.clone()).unwrap();
+    run(&f, &mut s, Who::Service);
+    assert_eq!(s.phase, Phase::Idle);
+    assert_eq!(s.installed_version, "1.3.0");
+    let new = legacy("1.3.0", "r/api:1.3.0@sha256:a", "r/web:1.3.0@sha256:b");
+    assert_eq!(*f.put.borrow(), [("1.3.0".to_string(), new)]);
+
+    // Or, if the new one does not answer, it goes back to the images the
+    // file kept.
+    let f = Fake::new().failing("healthy:1.3.0");
+    let mut s: State = serde_json::from_value(older).unwrap();
+    run(&f, &mut s, Who::Service);
+    assert_eq!(s.last.as_ref().unwrap().kind, OutcomeKind::RolledBack);
+    let old = legacy("1.2.0", "r/api:1.2.0@sha256:c", "r/web:1.2.0@sha256:d");
+    assert_eq!(f.put.borrow().last(), Some(&("1.2.0".to_string(), old)));
+}
