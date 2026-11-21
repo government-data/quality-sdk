@@ -9,6 +9,7 @@
 pub mod api;
 pub mod aws;
 pub mod check;
+pub mod command;
 pub mod config;
 #[cfg(test)]
 mod fake_exec;
