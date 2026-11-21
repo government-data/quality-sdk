@@ -1,5 +1,5 @@
 //! The installation's agent (decision 0003): it runs the update engine
-//! (`updater`) with the real host, made of one adapter per concern, reading
+//! (`updater`) with the real [`host::AgentHost`], made of one adapter per concern, reading
 //! its settings ([`config`]) and keeping its files at the installation's
 //! [`paths`].
 //!
@@ -7,4 +7,5 @@
 //! and pulls what a version names.
 
 pub mod config;
+pub mod host;
 pub mod paths;
