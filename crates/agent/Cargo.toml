@@ -26,22 +26,26 @@ flate2.workspace = true
 hex.workspace = true
 index-model.workspace = true
 module-manifest.workspace = true
+# A new key and its certificate request at each renewal of the agent's
+# certificate for the `internal` entry point; the key's PKCS #8 PEM.
+p256.workspace = true
+rand_core.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
+# The OID of SHA-256, which names the request's signature.
+sha2 = { workspace = true, features = ["oid"] }
 tar.workspace = true
 toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 updater.workspace = true
 ureq.workspace = true
-# The agent's certificate for the `internal` entry point: when it ends.
+# The agent's certificate for the `internal` entry point: when it ends, and
+# the request of its renewal.
 x509-cert.workspace = true
 
 [dev-dependencies]
-# To sign test indexes as KMS does (ECDSA P-256, base64 of the DER).
-p256.workspace = true
 # A test CA and certificates, and a local mTLS server, for the `updater/v1`
 # client (ring, as ureq's rustls uses).
 rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
