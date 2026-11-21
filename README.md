@@ -134,7 +134,7 @@ never names a module. Module-to-module and agent traffic goes through the
 | `crates/updater`     | The update engine: a state machine that survives a crash, behind its `Host` trait.                     |
 | `crates/agent`       | The installation's agent (`quality-data-agent`) and its adapters.                                      |
 | `crates/aws-client`  | The few AWS calls, signed with SigV4 by hand (no AWS SDK), shared by the agent and the CLI.            |
-| `crates/sdk-cli`     | The `quality-sdk` CLI: `enrol` (more commands to come).                                              |
+| `crates/sdk-cli`     | The `quality-sdk` CLI: `enrol` and `sign-enrolment` (more commands to come).                           |
 | `.github/workflows/` | CI checks for Terraform and Rust.                                                                      |
 
 Design records are internal and are not part of this repository.

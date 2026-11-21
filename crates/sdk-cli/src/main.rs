@@ -1,12 +1,12 @@
 //! `quality-sdk`: enrol an installation, sign its enrolment, revoke it,
 //! publish a platform version (decision 0001).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use agent::paths::Paths;
 use sdk_cli::args::Args;
-use sdk_cli::pki;
+use sdk_cli::pki::{self, Ca};
 
 const USAGE: &str = "\
 usage: quality-sdk <command> [options]
@@ -17,6 +17,10 @@ commands:
       /etc/quality-data/enrolment/private-key.pem) and its certificate
       request (enrolment/request.csr, OU=installation, CN=ID), printed for
       the CA's holder. Run again, it keeps the key.
+  sign-enrolment --ca-cert FILE --ca-key FILE --days N [--out FILE] REQUEST
+      By the CA's holder, offline: sign an installation's certificate
+      request for N days. Refused without OU=installation and one CN. The
+      certificate goes to FILE or standard output; its serial is printed.
 
 options:
   --root DIR   the installation's paths under DIR (development)";
@@ -28,6 +32,8 @@ fn main() -> ExitCode {
     };
     let result = match command.as_str() {
         "enrol" => Args::parse(args, &["installation", "root"]).and_then(|a| enrol(&a)),
+        "sign-enrolment" => Args::parse(args, &["ca-cert", "ca-key", "days", "out"])
+            .and_then(|a| sign_enrolment(&a)),
         "-h" | "--help" | "help" => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
@@ -73,5 +79,31 @@ fn enrol(args: &Args) -> Result<(), String> {
         pki::path(&paths.certificate())
     );
     print!("{}", done.request_pem);
+    Ok(())
+}
+
+fn sign_enrolment(args: &Args) -> Result<(), String> {
+    let ca = Ca::load(
+        Path::new(args.required("ca-cert")?),
+        Path::new(args.required("ca-key")?),
+    )?;
+    let days: u32 = args
+        .required("days")?
+        .parse()
+        .map_err(|_| "--days is a number of days".to_string())?;
+    let request = pki::read(Path::new(args.one("a certificate request")?))?;
+    let signed = sdk_cli::sign::sign(&ca, &request, days)?;
+    match args.get("out").map(PathBuf::from) {
+        Some(out) => {
+            pki::write_replacing(&out, signed.certificate_pem.as_bytes())?;
+            eprintln!("certificate  {}", pki::path(&out));
+        }
+        None => print!("{}", signed.certificate_pem),
+    }
+    eprintln!("installation {}", signed.installation);
+    eprintln!(
+        "serial       {} (keep it: `revoke` takes it)",
+        signed.serial
+    );
     Ok(())
 }
