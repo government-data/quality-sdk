@@ -77,13 +77,18 @@ impl Cloud for FakeCloud {
 
 struct FakeCompose(Rc<World>);
 impl Compose for FakeCompose {
-    fn put_version(&self, version: &str, _m: &Modules) -> Result<(), String> {
-        self.0.note(format!("compose:put:{version}"));
+    fn put_version(&self, version: &str, _m: &Modules, order: &[String]) -> Result<(), String> {
+        self.0
+            .note(format!("compose:put:{version}:{}", order.join(",")));
         *self.0.up.borrow_mut() = version.into();
         Ok(())
     }
     fn start(&self) -> Result<(), String> {
         self.0.note("compose:start");
+        Ok(())
+    }
+    fn stop(&self) -> Result<(), String> {
+        self.0.note("compose:stop");
         Ok(())
     }
     fn installed(&self) -> Result<Installed, String> {
@@ -211,7 +216,7 @@ fn an_update_runs_through_every_adapter_and_its_state_is_on_disk() {
         "database:back_up",
         "packages:save:quality-data:1.2.0",
         "packages:put:quality-data:/packages/quality-data-1.3.0.tar.gz",
-        "compose:put:1.3.0",
+        "compose:put:1.3.0:quality-data",
         "compose:start",
         "compose:healthy",
         "packages:commands",

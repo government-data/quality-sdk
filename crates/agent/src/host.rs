@@ -12,6 +12,7 @@
 //!
 //! `now`, `wait` and writing the state file are the agent's own.
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -30,8 +31,14 @@ pub trait Cloud {
 
 /// The running containers.
 pub trait Compose {
-    fn put_version(&self, version: &str, modules: &Modules) -> Result<(), String>;
+    /// Put `version` with its modules' images; `order` is the order its
+    /// packages were put in, the order its modules start in.
+    fn put_version(&self, version: &str, modules: &Modules, order: &[String])
+        -> Result<(), String>;
     fn start(&self) -> Result<(), String>;
+    /// Every module stopped: nothing connected while the database is
+    /// restored.
+    fn stop(&self) -> Result<(), String>;
     fn installed(&self) -> Result<Installed, String>;
     /// Every installed module's health.
     fn modules_healthy(&self) -> Result<(), String>;
@@ -107,6 +114,10 @@ impl std::fmt::Debug for Adapters {
 pub struct AgentHost {
     adapters: Adapters,
     state_file: PathBuf,
+    /// The modules whose packages were put since the last version was put,
+    /// in that order: the engine puts them a module after those it
+    /// requires.
+    put_order: RefCell<Vec<String>>,
 }
 
 impl AgentHost {
@@ -114,6 +125,7 @@ impl AgentHost {
         Self {
             adapters,
             state_file,
+            put_order: RefCell::default(),
         }
     }
 }
@@ -171,10 +183,15 @@ impl Host for AgentHost {
         self.adapters.packages.manifest(package)
     }
     fn put_package(&self, module: &str, package: &Path, remove: &[String]) -> Result<(), String> {
-        self.adapters.packages.put(module, package, remove)
+        self.adapters.packages.put(module, package, remove)?;
+        let mut order = self.put_order.borrow_mut();
+        order.retain(|m| m != module);
+        order.push(module.into());
+        Ok(())
     }
     fn put_version(&self, version: &str, modules: &Modules) -> Result<(), String> {
-        self.adapters.compose.put_version(version, modules)
+        let order = std::mem::take(&mut *self.put_order.borrow_mut());
+        self.adapters.compose.put_version(version, modules, &order)
     }
     fn start(&self) -> Result<(), String> {
         self.adapters.compose.start()
@@ -190,7 +207,10 @@ impl Host for AgentHost {
         }
         self.adapters.compose.modules_healthy()
     }
+    /// Nothing connected while it is restored: every module is stopped
+    /// first; the engine starts them after.
     fn restore_database(&self, backup: &Path) -> Result<(), String> {
+        self.adapters.compose.stop()?;
         self.adapters.database.restore(backup)
     }
     fn install_commands(&self) -> Result<(), String> {

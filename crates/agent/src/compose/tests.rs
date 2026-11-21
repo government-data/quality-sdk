@@ -150,3 +150,90 @@ fn modules_without_an_order_start_by_name_and_compose_is_named_after_the_module(
     assert!(c.compose("../x", &["ps"]).is_err());
     std::fs::remove_dir_all(r).unwrap();
 }
+
+fn running(fake: &Fake) -> Vec<String> {
+    // Without the paths, the same for any root.
+    fake.lines()
+        .iter()
+        .map(|l| {
+            let project = l.split_whitespace().nth(3).unwrap_or("").to_string();
+            let tail: Vec<&str> = l.split(".env ").nth(1).unwrap_or("").split(' ').collect();
+            format!("{project} {}", tail.join(" "))
+        })
+        .collect()
+}
+
+#[test]
+fn start_brings_down_what_the_version_no_longer_has_then_up_in_order() {
+    use crate::host::Compose;
+    let r = root("start");
+    let fake = std::rc::Rc::new(Fake::default());
+    let mut c = DockerCompose::new(&Paths::under(&r));
+    c.runner = Box::new(Shared(fake.clone()));
+    c.put_version(
+        "1.3.0",
+        &modules("1.3.0", 'a'),
+        &order(&["lake-rustfs", "quality-data"]),
+    )
+    .unwrap();
+    std::fs::create_dir_all(r.join("opt/quality-data/lake-rustfs/1.3.0")).unwrap();
+    std::os::unix::fs::symlink("1.3.0", r.join("opt/quality-data/lake-rustfs/current")).unwrap();
+    let mut next = modules("1.4.0", 'b');
+    next.remove("lake-rustfs");
+    Compose::put_version(&c, "1.4.0", &next, &order(&["quality-data"])).unwrap();
+    c.start().unwrap();
+    c.stop().unwrap();
+    assert_eq!(
+        running(&fake),
+        [
+            "lake-rustfs down --remove-orphans",
+            "quality-data up --detach --no-build --remove-orphans --wait --wait-timeout 300",
+            "quality-data stop",
+        ]
+    );
+    std::fs::remove_dir_all(r).unwrap();
+}
+
+#[test]
+fn a_module_is_healthy_when_every_container_runs_and_passes_its_healthcheck() {
+    use crate::host::Compose;
+    let r = root("health");
+    let ps = |answer: &str| {
+        let fake = Fake::default()
+            .answer("--project-name quality-data", Ok(answer))
+            .answer(
+                "--project-name lake-rustfs",
+                Ok(r#"{"Service":"rustfs","State":"running","Health":""}"#),
+            );
+        let c = compose(&r, fake);
+        c.put_version("1.3.0", &modules("1.3.0", 'a'), &[]).unwrap();
+        c.modules_healthy()
+    };
+    ps(concat!(
+        r#"{"Service":"api","State":"running","Health":"healthy"}"#,
+        "\n",
+        r#"{"Service":"web","State":"running","Health":""}"#
+    ))
+    .unwrap();
+    ps(r#"[{"Service":"api","State":"running","Health":"healthy"}]"#).unwrap();
+    let err = ps(r#"{"Service":"api","State":"running","Health":"unhealthy"}"#).unwrap_err();
+    assert_eq!(err, "quality-data/api is running, unhealthy");
+    let err = ps(r#"{"Service":"api","State":"exited","Health":""}"#).unwrap_err();
+    assert_eq!(err, "quality-data/api is exited");
+    assert_eq!(ps("").unwrap_err(), "quality-data has no container");
+    assert!(ps("not json").is_err());
+    let failing = compose(&r, Fake::default().answer(" up ", Err("docker said no")));
+    failing
+        .put_version("1.3.0", &modules("1.3.0", 'a'), &[])
+        .unwrap();
+    assert!(failing.start().unwrap_err().contains("docker said no"));
+    std::fs::remove_dir_all(r).unwrap();
+}
+
+/// A fake the test keeps a handle on.
+struct Shared(std::rc::Rc<Fake>);
+impl Runner for Shared {
+    fn run(&self, cmd: &Cmd) -> Result<String, String> {
+        self.0.run(cmd)
+    }
+}

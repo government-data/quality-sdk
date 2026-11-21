@@ -22,6 +22,7 @@ use updater::state::Modules;
 use crate::command::{Cmd, Runner};
 
 mod record;
+mod run;
 
 pub use record::{Put, Record};
 
