@@ -7,6 +7,7 @@
 //! and pulls what a version names.
 
 pub mod aws;
+pub mod check;
 pub mod config;
 pub mod host;
 pub mod paths;

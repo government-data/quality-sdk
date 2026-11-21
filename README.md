@@ -11,9 +11,12 @@ names, backs up, and applies the update as steps that survive a crash. The
 installation opens no inbound port for this.
 
 > **Status.** Today the repository holds the AWS side in Terraform
-> (`infra/aws/`) and the pure model of the signed index (`crates/index-model`).
-> The agent, the CLI, the module manifests and the integration between modules
-> shown below are **planned**.
+> (`infra/aws/`), the pure model of the signed index (`crates/index-model`),
+> the update engine (`crates/updater`) and the agent (`crates/agent`) with its
+> AWS adapter; `quality-data-agent check` checks the AWS side end to end
+> (`tools/verify/agent-aws.sh`). The agent's other adapters (quality-data's
+> API, Docker Compose, PostgreSQL, the package files), the CLI, the module
+> manifests and the integration between modules shown below are **planned**.
 
 ## Architecture
 
@@ -34,7 +37,7 @@ flowchart LR
   end
 
   subgraph inst["Installation"]
-    agent["SDK agent / CLI<br/>(planned)"]
+    agent["SDK agent<br/>(CLI planned)"]
     cert["enrolment<br/>certificate"]
   end
 
