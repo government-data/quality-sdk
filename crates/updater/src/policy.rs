@@ -21,6 +21,9 @@ pub enum Mode {
 
 /// The automatic update's window, in the installation's time. If `start` is
 /// after `end` it crosses midnight, and it counts the day it starts.
+///
+/// The time zone is the installation's own setting (decision 0003): UTC when
+/// it is not given or does not parse.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Window {
     /// 1 = Monday … 7 = Sunday.
@@ -28,7 +31,12 @@ pub struct Window {
     /// "HH:MM"
     pub start: String,
     pub end: String,
+    #[serde(default = "utc")]
     pub timezone: String,
+}
+
+fn utc() -> String {
+    "UTC".into()
 }
 
 impl Default for Window {
@@ -37,7 +45,7 @@ impl Default for Window {
             days: (1..=7).collect(),
             start: "02:00".into(),
             end: "05:00".into(),
-            timezone: "America/Bogota".into(),
+            timezone: utc(),
         }
     }
 }
@@ -85,7 +93,7 @@ pub struct Orders {
 
 impl Window {
     fn zone(&self) -> Tz {
-        self.timezone.parse().unwrap_or(chrono_tz::America::Bogota)
+        self.timezone.parse().unwrap_or(chrono_tz::UTC)
     }
 
     fn hours(&self) -> Option<(NaiveTime, NaiveTime)> {
@@ -238,6 +246,29 @@ mod tests {
             window(&[], "02:00", "05:00"),
         ] {
             assert!(!w.contains(bogota("2026-10-19 03:00")), "{w:?}");
+        }
+    }
+
+    #[test]
+    fn without_a_time_zone_the_window_is_in_utc() {
+        assert_eq!(Window::default().timezone, "UTC");
+        let utc = |s: &str| {
+            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M")
+                .unwrap()
+                .and_utc()
+        };
+        let given: Window = serde_json::from_value(serde_json::json!({
+            "days": [1, 2, 3, 4, 5, 6, 7], "start": "02:00", "end": "05:00"
+        }))
+        .unwrap();
+        let unknown = Window {
+            timezone: "Nowhere/Atlantis".into(),
+            ..Window::default()
+        };
+        for w in [Window::default(), given, unknown] {
+            assert!(!w.contains(utc("2026-10-19 01:59")), "{w:?}");
+            assert!(w.contains(utc("2026-10-19 02:00")), "{w:?}");
+            assert!(!w.contains(utc("2026-10-19 05:00")), "{w:?}");
         }
     }
 
