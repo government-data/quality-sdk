@@ -2,6 +2,8 @@
 //! `index/` and `packages/`, write its own `reports/<id>/`. Signed with
 //! SigV4 and the Roles Anywhere credentials.
 
+use std::rc::Rc;
+
 use chrono::Utc;
 
 use super::credentials::CredentialSource;
@@ -30,35 +32,81 @@ impl std::fmt::Display for AwsError {
     }
 }
 
-/// The release bucket, as the installation role sees it.
-pub struct Bucket {
+/// The AWS account as the installation role reaches it: its region, its
+/// credentials and the way out. The bucket and the registry share it.
+pub struct Account {
     region: String,
-    bucket: String,
     credentials: Box<dyn CredentialSource>,
     transport: Box<dyn Transport>,
 }
 
-impl std::fmt::Debug for Bucket {
+impl std::fmt::Debug for Account {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Bucket")
+        f.debug_struct("Account")
             .field("region", &self.region)
-            .field("bucket", &self.bucket)
             .finish_non_exhaustive()
     }
 }
 
-impl Bucket {
+impl Account {
     pub fn new(
         region: &str,
-        bucket: &str,
         credentials: Box<dyn CredentialSource>,
         transport: Box<dyn Transport>,
     ) -> Self {
         Self {
             region: region.into(),
-            bucket: bucket.into(),
             credentials,
             transport,
+        }
+    }
+
+    pub fn region(&self) -> &str {
+        &self.region
+    }
+
+    /// Sign `request` for `service` and send it; `what` names it in errors.
+    pub(crate) fn send(
+        &self,
+        service: &str,
+        mut request: Request,
+        what: &str,
+    ) -> Result<Response, AwsError> {
+        let credentials = self.credentials.credentials().map_err(|e| {
+            if e.contains("AccessDenied") {
+                AwsError::Denied(e)
+            } else {
+                AwsError::Unavailable(e)
+            }
+        })?;
+        sign(
+            &mut request,
+            &credentials,
+            &self.region,
+            service,
+            Utc::now(),
+        )
+        .map_err(AwsError::Failed)?;
+        let r = self
+            .transport
+            .send(request)
+            .map_err(|e| AwsError::Unavailable(format!("{what}: {e}")))?;
+        check(what, r)
+    }
+}
+
+/// The release bucket, as the installation role sees it.
+#[derive(Debug, Clone)]
+pub struct Bucket {
+    account: Rc<Account>,
+    bucket: String,
+}
+
+impl Bucket {
+    pub fn new(account: Rc<Account>, bucket: &str) -> Self {
+        Self {
+            account,
+            bucket: bucket.into(),
         }
     }
 
@@ -66,7 +114,7 @@ impl Bucket {
         format!(
             "https://{}.s3.{}.amazonaws.com/{}",
             self.bucket,
-            self.region,
+            self.account.region,
             uri_encode(key, true)
         )
     }
@@ -89,29 +137,16 @@ impl Bucket {
     }
 
     fn send(&self, mut request: Request) -> Result<Response, AwsError> {
-        let credentials = self.credentials.credentials().map_err(|e| {
-            if e.contains("AccessDenied") {
-                AwsError::Denied(e)
-            } else {
-                AwsError::Unavailable(e)
-            }
-        })?;
         request
             .headers
             .push(("x-amz-content-sha256".into(), payload_hash(&request.body)));
-        sign(&mut request, &credentials, &self.region, "s3", Utc::now())
-            .map_err(AwsError::Failed)?;
         let what = format!(
             "{} s3://{}{}",
             request.method,
             self.bucket,
             path_of(&request.url)
         );
-        let r = self
-            .transport
-            .send(request)
-            .map_err(|e| AwsError::Unavailable(format!("{what}: {e}")))?;
-        check(&what, r)
+        self.account.send("s3", request, &what)
     }
 }
 
@@ -129,6 +164,7 @@ pub(crate) fn check(what: &str, r: Response) -> Result<Response, AwsError> {
     let m = format!("{what}: {} {code}", r.status);
     Err(match r.status {
         403 => AwsError::Denied(m),
+        _ if code.contains("AccessDenied") => AwsError::Denied(m),
         429 | 500..=599 => AwsError::Unavailable(m),
         _ if code.contains("Throttl") || code == "SlowDown" => AwsError::Unavailable(m),
         _ => AwsError::Failed(m),
@@ -197,13 +233,16 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn bucket(aws: &FakeAws) -> Bucket {
-        Bucket::new(
+    pub(crate) fn account(aws: &FakeAws) -> Rc<Account> {
+        Rc::new(Account::new(
             "us-east-1",
-            "releases",
             Box::new(Fixed),
             Box::new(aws.clone()),
-        )
+        ))
+    }
+
+    pub(crate) fn bucket(aws: &FakeAws) -> Bucket {
+        Bucket::new(account(aws), "releases")
     }
 
     #[test]
