@@ -4,7 +4,7 @@ output "releases_bucket" {
 }
 
 output "repositories" {
-  description = "ECR repository URL per module image."
+  description = "ECR repository URL per module image, and per agent tool image (tools/<image>)."
   value       = { for k, r in aws_ecr_repository.image : k => r.repository_url }
 }
 

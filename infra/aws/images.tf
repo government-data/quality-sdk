@@ -1,10 +1,14 @@
-# One ECR repository per module image (decision 0001). Tags are immutable: a
+# One ECR repository per module image (decision 0001), and one per image the
+# agent itself runs (`tools/<image>`, decision 0003). Tags are immutable: a
 # published version is never rewritten, and installations pull by digest.
 
 locals {
-  repositories = toset(flatten([
-    for module, images in var.modules : [for image in images : "${module}/${image}"]
-  ]))
+  repositories = toset(concat(
+    flatten([
+      for module, images in var.modules : [for image in images : "${module}/${image}"]
+    ]),
+    [for image in var.tool_images : "tools/${image}"],
+  ))
 }
 
 resource "aws_ecr_repository" "image" {
