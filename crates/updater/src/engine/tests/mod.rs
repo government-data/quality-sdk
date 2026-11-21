@@ -10,6 +10,8 @@ use super::*;
 use crate::policy::{Mode, Policy, Request, Window};
 
 mod preparing;
+mod recovering;
+mod updating;
 
 #[derive(Default)]
 struct Fake {
