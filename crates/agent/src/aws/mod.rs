@@ -6,6 +6,7 @@
 //! [`http::Transport`]) so it is tested with fakes: no test calls a real
 //! account.
 
+pub mod client;
 pub mod credentials;
 pub mod http;
 pub mod sigv4;
