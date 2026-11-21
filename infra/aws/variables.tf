@@ -24,6 +24,17 @@ variable "modules" {
   }
 }
 
+variable "tool_images" {
+  description = <<-EOT
+    Third-party images the installation's agent itself runs, mirrored by
+    digest (decision 0003): one ECR repository each, named
+    <project>/tools/<image>. `busybox` empties a module's volume before its
+    backup is restored into it, whatever the module's own image holds.
+  EOT
+  type        = list(string)
+  default     = ["busybox"]
+}
+
 variable "versions_per_repository" {
   description = "Tagged images kept per ECR repository. Older versions can no longer be installed or rolled back to."
   type        = number
