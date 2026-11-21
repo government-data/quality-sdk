@@ -1,0 +1,38 @@
+# The installation's update agent as a service (decision 0003 step 11):
+# `quality-data-agent run` pulls and applies platform versions in rounds,
+# a minute apart; it asks the AWS side once an hour. It opens no port.
+#
+# Installed as /etc/systemd/system/quality-data-agent.service, with the
+# binary at /usr/local/bin/quality-data-agent, aws_signing_helper at
+# /usr/local/bin/aws_signing_helper and the settings at
+# /etc/quality-data/agent.toml (with [api]); then
+#
+#   systemctl daemon-reload
+#   systemctl enable --now quality-data-agent
+#   journalctl -u quality-data-agent -f
+#
+# It runs as root: it drives Docker, writes /opt/quality-data and
+# /var/lib/quality-data and reads the enrolment key. An update interrupted
+# by a stop or a crash goes on from its state file at the next start.
+
+[Unit]
+Description=Quality Data update agent
+Documentation=https://github.com/quality-data/quality-sdk
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/quality-data-agent run
+Restart=on-failure
+RestartSec=60
+# A step in progress (a dump, `docker compose up --wait`) may take minutes;
+# a step stopped half way runs again from the state file.
+TimeoutStopSec=120
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
