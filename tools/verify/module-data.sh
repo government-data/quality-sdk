@@ -22,6 +22,13 @@
 #   4. `cp - app:/` reads that archive from standard input into a stopped
 #      container: the files the archive has are its own again, and a file
 #      it does not have is kept.
+#   5. A stopped container's volume is emptied by a throwaway container of
+#      its own image with its mounts (`docker run --rm --volumes-from <id>
+#      --user 0:0 --network none --entrypoint find <image> <path> -mindepth
+#      1 -delete`): its named volume and its anonymous one are the
+#      container's own (`docker inspect` lists both mounts), files of
+#      another owner go too, and the mount point stays. Then `cp - app:/`
+#      leaves the archive's files only: the restore the agent does.
 #
 # The project's containers, network and volume are removed on exit, also on
 # failure. Run alone: no build at the same time (AGENTS.md).
@@ -67,6 +74,7 @@ cleanup() {
   if [[ -e "$MODULE/current" ]]; then
     compose down -v --remove-orphans --timeout 1 >/dev/null 2>&1
   fi
+  docker rm -f "$PROJECT-empty" >/dev/null 2>&1
   docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" | xargs -r docker rm -f -v >/dev/null
   docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT" | xargs -r docker volume rm >/dev/null
   docker network ls -q --filter "label=com.docker.compose.project=$PROJECT" | xargs -r docker network rm >/dev/null
@@ -91,7 +99,7 @@ services:
     image: ${IMAGE_APP:?IMAGE_APP is the agent's}
     command: ["sleep", "3600"]
     stop_grace_period: 1s
-    volumes: ["data:/data"]
+    volumes: ["data:/data", "/scratch"]
   idle:
     image: ${IMAGE_APP}
     command: ["true"]
@@ -188,6 +196,48 @@ if compose cp - app:/ <"$WORK/running.tar" 2>"$WORK/cp3.log"; then
   fi
 else
   record FAIL "cp - app:/ into a stopped container" "$(tail -1 "$WORK/cp3.log")"
+fi
+
+# --- 5. empty the volume of a stopped container, then the archive ------------
+
+compose start app >/dev/null 2>&1
+compose exec -T app sh -c 'echo later > /data/c && mkdir -p /data/d && echo x > /data/d/e &&
+  chown 1234:1234 /data/c /data/d/e && echo s > /scratch/s'
+compose stop app >/dev/null 2>&1
+cid="$(compose ps --all --quiet app)"
+image="$(docker inspect --format '{{.Image}}' "$cid")"
+mounts="$(docker inspect --format '{{range .Mounts}}{{.Destination}} {{end}}' "$cid")"
+empty() { # empty <path>: the agent's command
+  docker run --rm --name "$PROJECT-empty" --network none --user 0:0 --volumes-from "$cid" \
+    --entrypoint find "$image" "$1" -mindepth 1 -delete
+}
+left() { # left <path>: what the stopped container's volume holds
+  compose cp "app:$1" - 2>/dev/null | tar -t 2>/dev/null | tr '\n' ' '
+}
+if [[ " $mounts" == *" /data "* && " $mounts" == *" /scratch "* ]] &&
+  empty /data 2>"$WORK/empty.log" && empty /scratch 2>>"$WORK/empty.log"; then
+  data_left="$(left /data)"
+  scratch_left="$(left /scratch)"
+  if [[ "$data_left" == "data/ " && "$scratch_left" == "scratch/ " ]]; then
+    record PASS "docker run --volumes-from empties a stopped container's named and anonymous volumes" \
+      "files of uid 1234 too; the mount points stay"
+  else
+    record FAIL "docker run --volumes-from empties the volumes" "left: $data_left| $scratch_left"
+  fi
+else
+  record FAIL "docker run --volumes-from empties the volumes" \
+    "mounts: $mounts; $(tail -1 "$WORK/empty.log" 2>/dev/null)"
+fi
+if compose cp - app:/ <"$WORK/running.tar" 2>"$WORK/cp4.log"; then
+  compose start app >/dev/null 2>&1
+  got="$(compose exec -T app sh -c 'cd /data && find . | sort | tr "\n" " "; cat a sub/b' 2>/dev/null | tr '\n' ' ')"
+  if [[ "$got" == ". ./a ./sub ./sub/b one two " ]]; then
+    record PASS "emptied, then cp - app:/: the volume holds the archive's files only"
+  else
+    record FAIL "emptied, then cp - app:/" "read: $got"
+  fi
+else
+  record FAIL "cp - app:/ into the emptied volume" "$(tail -1 "$WORK/cp4.log")"
 fi
 
 # --- Summary --------------------------------------------------------------
