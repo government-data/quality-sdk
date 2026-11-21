@@ -14,6 +14,16 @@
 # It runs as root: it drives Docker, writes /opt/quality-data and
 # /var/lib/quality-data and reads the enrolment key. An update interrupted
 # by a stop or a crash goes on from its state file at the next start.
+#
+# Sandboxed (decision 0003 point 6; tools/verify/agent-unit.sh checks that
+# the Docker CLI, `docker compose` and these paths work inside it): the
+# file system is read-only but for the three directories it writes, which
+# the installer creates first (/etc/quality-data/internal may come later:
+# it holds the certificate for quality-data's internal entry point, which
+# the agent renews). Home directories are hidden, so the Compose plugin
+# must be installed system-wide (/usr/libexec/docker/cli-plugins or
+# /usr/lib/docker/cli-plugins), not under /root/.docker. It keeps root's
+# capabilities: a module's key files may belong to another user.
 
 [Unit]
 Description=Quality Data update agent
@@ -32,7 +42,25 @@ RestartSec=60
 TimeoutStopSec=120
 UMask=0077
 NoNewPrivileges=yes
+# The image puller's temporary Docker configuration is in /tmp.
 PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/quality-data /opt/quality-data -/etc/quality-data/internal
+ProtectHome=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+# Docker's socket, AWS and quality-data over IP; netlink for Go's resolver.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 
 [Install]
 WantedBy=multi-user.target
