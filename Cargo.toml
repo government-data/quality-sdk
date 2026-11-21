@@ -16,6 +16,7 @@ repository = "https://github.com/quality-data/quality-sdk"
 agent = { path = "crates/agent" }
 aws-client = { path = "crates/aws-client" }
 index-model = { path = "crates/index-model" }
+module-manifest = { path = "crates/module-manifest" }
 updater = { path = "crates/updater" }
 
 base64 = "0.22"
@@ -33,6 +34,8 @@ p256 = "0.13"
 # Randomness from the operating system: keys and certificate serials.
 rand_core = { version = "0.6", features = ["getrandom"] }
 semver = { version = "1", features = ["serde"] }
+# Module manifests (`module.yaml`, decision 0002): YAML read only.
+serde-saphyr = { version = "2.0.0", default-features = false, features = ["deserialize"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
