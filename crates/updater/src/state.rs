@@ -28,6 +28,23 @@ pub struct Module {
 /// it passes them to the host.
 pub type Modules = BTreeMap<String, Module>;
 
+/// A module's package of a target: downloaded and checked against its
+/// SHA-256 (decision 0003: one package per module).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModulePackage {
+    pub module: String,
+    pub path: PathBuf,
+}
+
+/// A module's installed package, copied to go back to it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedPackage {
+    pub module: String,
+    pub path: PathBuf,
+    /// Its files (the ones `manifest` lists).
+    pub manifest: Vec<String>,
+}
+
 /// A version that can be installed: what the cloud offered, already
 /// downloaded and checked.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,8 +53,9 @@ pub struct Target {
     /// The platform version.
     pub version: String,
     pub modules: Modules,
-    /// The package, already checked against its SHA-256.
-    pub package: PathBuf,
+    /// Every module's package, in the order they are applied: a module
+    /// after those that provide what it requires.
+    pub packages: Vec<ModulePackage>,
     #[serde(default)]
     pub notes: String,
 }
@@ -49,9 +67,18 @@ pub struct Previous {
     /// The platform version.
     pub version: String,
     pub modules: Modules,
-    /// A copy of its package's files (the ones `manifest` lists).
-    pub package: PathBuf,
-    pub manifest: Vec<String>,
+    /// A copy of every installed module's package.
+    pub packages: Vec<SavedPackage>,
+}
+
+impl Previous {
+    /// The files `module`'s installed package had (none if it had none).
+    pub fn manifest_of(&self, module: &str) -> &[String] {
+        self.packages
+            .iter()
+            .find(|p| p.module == module)
+            .map_or(&[], |p| p.manifest.as_slice())
+    }
 }
 
 /// Where it is. Each phase carries what is needed to go on or undo.
@@ -292,7 +319,10 @@ mod tests {
         Target {
             version: "1.3.0".into(),
             modules: modules("1.3.0"),
-            package: "/var/lib/quality-data/updater/packages/1.3.0.tar.gz".into(),
+            packages: vec![ModulePackage {
+                module: "quality-data".into(),
+                path: "/var/lib/quality-data/updater/packages/1.3.0.tar.gz".into(),
+            }],
             notes: String::new(),
         }
     }
@@ -308,8 +338,11 @@ mod tests {
             previous: Previous {
                 version: "1.2.0".into(),
                 modules: modules("1.2.0"),
-                package: "/x/1.2.0.tar".into(),
-                manifest: vec!["compose.yml".into()],
+                packages: vec![SavedPackage {
+                    module: "orchestrator".into(),
+                    path: "/x/orchestrator-1.2.0.tar".into(),
+                    manifest: vec!["compose.yml".into()],
+                }],
             },
             backup: "/var/lib/quality-data/backups/quality-data-1".into(),
         };

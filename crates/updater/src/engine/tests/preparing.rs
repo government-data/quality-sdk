@@ -10,7 +10,11 @@ fn it_never_downgrades() {
     run(&f, &mut s, Who::Person);
     assert_eq!(s.phase, Phase::Idle);
     assert_eq!(s.available, None);
-    assert!(!f.did("download_package:1.1.9"));
+    assert!(!f
+        .calls
+        .borrow()
+        .iter()
+        .any(|c| c.starts_with("download_package")));
     assert!(is_newer("1.10.0", "1.9.9"));
     assert!(!is_newer("1.2.0", "1.2.0"));
     assert!(
@@ -63,7 +67,8 @@ fn without_space_nothing_is_downloaded() {
     let mut s = State::new("1.2.0");
     run(&f, &mut s, Who::Service);
     assert_eq!(s.last.as_ref().unwrap().kind, OutcomeKind::Failed);
-    assert!(!f.did("download_package:1.3.0"));
+    assert!(!f.did("download_package:orchestrator:1.3.0"));
+    assert!(!f.did("download_package:quality-data:1.3.0"));
 }
 
 #[test]

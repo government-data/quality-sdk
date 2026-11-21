@@ -29,6 +29,7 @@ use crate::state::{Modules, Outcome, OutcomeKind, Phase, State};
 
 mod apply;
 mod drain;
+mod order;
 mod prepare;
 mod recover;
 
@@ -43,11 +44,25 @@ use recover::{restore, roll_back};
 pub struct Offer {
     pub version: String,
     pub modules: Modules,
-    pub package_url: String,
-    pub package_sha256: String,
+    /// One package per module.
+    pub packages: Vec<OfferedPackage>,
     pub notes: String,
     /// The registry's temporary credential (host, user, token).
     pub registry: Option<(String, String, String)>,
+}
+
+/// A module's package, as the cloud offers it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfferedPackage {
+    pub module: String,
+    /// Where the host fetches it from (the release bucket's key).
+    pub key: String,
+    /// Its SHA-256, which the host checks before keeping it.
+    pub sha256: String,
+    /// The capabilities the module provides and requires: a module is
+    /// applied after those that provide what it requires.
+    pub provides: Vec<String>,
+    pub requires: Vec<String>,
 }
 
 /// Why the cloud did not offer a version.
@@ -88,8 +103,9 @@ pub trait Host {
     fn report_to_cloud(&self, outcome: &Outcome);
 
     fn free_space(&self) -> Result<(), String>;
-    /// Download the package and check its SHA-256; returns where it was left.
-    fn download_package(&self, offer: &Offer) -> Result<PathBuf, String>;
+    /// Download one module's package of `offer` and check its SHA-256;
+    /// returns where it was left.
+    fn download_package(&self, offer: &Offer, package: &OfferedPackage) -> Result<PathBuf, String>;
     /// Pull the images by digest (with the offer's credential).
     fn pull_images(&self, offer: &Offer) -> Result<(), String>;
 
@@ -104,12 +120,12 @@ pub trait Host {
     fn installed(&self) -> Result<Installed, String>;
     /// Back up the database and the keys, and check the backup.
     fn back_up(&self) -> Result<PathBuf, String>;
-    /// Copy the installed package's files.
-    fn save_package(&self, version: &str) -> Result<(PathBuf, Vec<String>), String>;
+    /// Copy the files of `module`'s installed package.
+    fn save_package(&self, module: &str, version: &str) -> Result<(PathBuf, Vec<String>), String>;
     /// The files a package carries.
     fn manifest(&self, package: &Path) -> Result<Vec<String>, String>;
-    /// Remove `remove` and put `package`'s files.
-    fn put_package(&self, package: &Path, remove: &[String]) -> Result<(), String>;
+    /// Remove `remove` from `module`'s files and put `package`'s.
+    fn put_package(&self, module: &str, package: &Path, remove: &[String]) -> Result<(), String>;
     /// Put `version` with every one of its modules' images.
     fn put_version(&self, version: &str, modules: &Modules) -> Result<(), String>;
     fn start(&self) -> Result<(), String>;

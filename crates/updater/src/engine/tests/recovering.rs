@@ -13,8 +13,13 @@ fn if_the_new_one_does_not_answer_it_goes_back_and_is_not_retried_by_itself() {
     assert_eq!(s.last.as_ref().unwrap().kind, OutcomeKind::RolledBack);
     assert_eq!(s.failed, vec!["1.3.0".to_string()]);
     assert_eq!(*f.up.borrow(), "1.2.0");
-    // The previous package comes back and what only the new one carried goes.
-    assert!(f.did("put_package:/releases/1.2.0.tar:remove=assets/app-1.3.0.js"));
+    // Every previous package comes back and what only the new one carried
+    // goes.
+    for module in ["orchestrator", "quality-data"] {
+        assert!(f.did(&format!(
+            "put_package:{module}:/releases/{module}-1.2.0.tar:remove=assets/app-1.3.0.js"
+        )));
+    }
     assert!(
         !f.did("restore:/backups/quality-data-1"),
         "no restore was needed"

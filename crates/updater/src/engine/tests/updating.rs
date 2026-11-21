@@ -13,31 +13,28 @@ fn a_person_updates_end_to_end() {
     assert_eq!(s.last.as_ref().unwrap().kind, OutcomeKind::Updated);
     assert_eq!(s.available, None);
     assert!(!f.maintenance.get(), "it left maintenance");
-    let calls = f.calls.borrow().clone();
-    let order = [
-        "cloud",
-        "download_package:1.3.0",
-        "pull_images:1.3.0",
-        "maintenance:on",
-        "back_up",
-        "save_package:1.2.0",
-        // The old file the new one does not carry is removed.
-        "put_package:/packages/1.3.0.tar.gz:remove=assets/app-1.2.0.js",
-        "put_version:1.3.0",
-        "start:1.3.0",
-        "healthy:1.3.0",
-        "install_commands",
-        "maintenance:off",
-        "report_to_cloud:Updated",
-    ];
-    let mut from = 0;
-    for step in order {
-        let i = calls[from..]
-            .iter()
-            .position(|l| l == step)
-            .unwrap_or_else(|| panic!("missing {step} (after {from}): {calls:#?}"));
-        from += i + 1;
-    }
+    in_order(
+        &f,
+        &[
+            "cloud",
+            "download_package:orchestrator:1.3.0",
+            "download_package:quality-data:1.3.0",
+            "pull_images:1.3.0",
+            "maintenance:on",
+            "back_up",
+            "save_package:orchestrator:1.2.0",
+            "save_package:quality-data:1.2.0",
+            // The old file the new one does not carry is removed.
+            "put_package:orchestrator:/packages/orchestrator-1.3.0.tar.gz:remove=assets/app-1.2.0.js",
+            "put_package:quality-data:/packages/quality-data-1.3.0.tar.gz:remove=assets/app-1.2.0.js",
+            "put_version:1.3.0",
+            "start:1.3.0",
+            "healthy:1.3.0",
+            "install_commands",
+            "maintenance:off",
+            "report_to_cloud:Updated",
+        ],
+    );
     // Each phase was written before going on.
     let phases: Vec<_> = f.saved.borrow().iter().map(|s| s.phase.name()).collect();
     for phase in [
