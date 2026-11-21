@@ -47,6 +47,9 @@ pub trait Compose {
     fn installed(&self) -> Result<Installed, String>;
     /// Every installed module's health.
     fn modules_healthy(&self) -> Result<(), String>;
+    /// The `drain.path` of the installed module's manifest (none: it has no
+    /// work to drain).
+    fn drain_path(&self, module: &str) -> Result<Option<String>, String>;
 }
 
 /// The database: back up, check the backup, restore.
@@ -86,6 +89,9 @@ pub trait Api {
 pub struct InstalledModule {
     pub name: String,
     pub version: String,
+    /// Its manifest's `drain.path`, which the module serves on its route of
+    /// the `internal` entry point (`null`: no work to drain).
+    pub drain_path: Option<String>,
 }
 
 /// The time: the system's, or a fake one in tests.
@@ -151,15 +157,19 @@ impl AgentHost {
     /// the whole list, so telling it twice changes nothing). A failure is
     /// logged and told again by [`AgentHost::tell_modules_if_untold`].
     pub fn tell_modules(&self) {
-        let told = self.adapters.compose.installed().and_then(|i| {
-            let modules: Vec<InstalledModule> = i
+        let compose = &self.adapters.compose;
+        let told = compose.installed().and_then(|i| {
+            let modules = i
                 .modules
                 .iter()
-                .map(|(name, m)| InstalledModule {
-                    name: name.clone(),
-                    version: m.version.clone(),
+                .map(|(name, m)| {
+                    Ok(InstalledModule {
+                        name: name.clone(),
+                        version: m.version.clone(),
+                        drain_path: compose.drain_path(name)?,
+                    })
                 })
-                .collect();
+                .collect::<Result<Vec<_>, String>>()?;
             self.adapters.api.put_modules(&modules)
         });
         match told {
