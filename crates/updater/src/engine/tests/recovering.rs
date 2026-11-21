@@ -82,6 +82,30 @@ fn if_not_even_restoring_works_it_is_critical_and_warns() {
 }
 
 #[test]
+fn a_restore_that_fails_starts_nothing_and_is_reported() {
+    let f = Fake::new()
+        .failing("healthy:1.3.0")
+        .failing("healthy:previous")
+        .failing("restore");
+    let mut s = State::new("1.2.0");
+    run(&f, &mut s, Who::Person);
+    let calls = f.calls.borrow().clone();
+    let restore = calls
+        .iter()
+        .position(|c| c == "restore:/backups/quality-data-1")
+        .unwrap();
+    // No module is started in a mixed state: a person intervenes.
+    assert!(
+        !calls[restore..].iter().any(|c| c.starts_with("start:")),
+        "{calls:#?}"
+    );
+    let last = s.last.as_ref().unwrap();
+    assert_eq!(last.kind, OutcomeKind::Critical);
+    assert!(last.detail.contains("pg_restore failed"), "{}", last.detail);
+    assert!(f.did("report_to_cloud:Critical"));
+}
+
+#[test]
 fn a_cut_halfway_goes_on_from_the_saved_phase() {
     // The power went off in each phase: back on, from the last saved one, it
     // ends in the new version or the previous one, never in between.

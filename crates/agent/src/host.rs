@@ -208,10 +208,23 @@ impl Host for AgentHost {
         self.adapters.compose.modules_healthy()
     }
     /// Nothing connected while it is restored: every module is stopped
-    /// first; the engine starts them after.
+    /// first; the engine starts them after. A restore that fails leaves
+    /// every module stopped (decision 0003 point 5): the database's own
+    /// service, brought up to restore, is stopped again, nothing starts in
+    /// a mixed state, and the engine reports it for a person.
     fn restore_database(&self, backup: &Path) -> Result<(), String> {
         self.adapters.compose.stop()?;
-        self.adapters.database.restore(backup)
+        let Err(failed) = self.adapters.database.restore(backup) else {
+            return Ok(());
+        };
+        match self.adapters.compose.stop() {
+            Ok(()) => Err(format!(
+                "{failed}; every module is left stopped for a person to intervene"
+            )),
+            Err(stop) => Err(format!(
+                "{failed}; stopping every module after it failed too ({stop})"
+            )),
+        }
     }
     fn install_commands(&self) -> Result<(), String> {
         self.adapters.packages.install_commands()
