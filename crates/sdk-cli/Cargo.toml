@@ -1,0 +1,27 @@
+[package]
+name = "sdk-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "quality-sdk"
+path = "src/main.rs"
+
+# The `quality-sdk` CLI (decision 0001): enrol an installation, sign its
+# enrolment with the installations' CA, revoke it, and publish a platform
+# version to the signed index.
+[dependencies]
+agent.workspace = true
+p256.workspace = true
+rand_core.workspace = true
+# The OID of SHA-256, which names the signatures in certificates.
+sha2 = { workspace = true, features = ["oid"] }
+x509-cert.workspace = true
