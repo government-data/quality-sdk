@@ -20,7 +20,7 @@ pub(super) fn apply(
     let apply = || -> Result<(), String> {
         let new = host.manifest(&target.package)?;
         host.put_package(&target.package, &difference(&previous.manifest, &new))?;
-        host.put_version(&target.version, &target.api, &target.web)?;
+        host.put_version(&target.version, &target.modules)?;
         host.start()
     };
     match apply() {

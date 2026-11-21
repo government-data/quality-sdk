@@ -6,19 +6,36 @@
 //! quality-data's API reads the same document (`POST /internal/report`), so
 //! its field and phase names are part of the protocol with the API.
 
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+mod file;
+
+/// A module at a platform version (decision 0003).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Module {
+    pub version: String,
+    /// Its images by name, each pinned by digest
+    /// (`<repository>@sha256:<hex>`).
+    pub images: BTreeMap<String, String>,
+}
+
+/// Every module of a platform version, by its name. The engine names none:
+/// it passes them to the host.
+pub type Modules = BTreeMap<String, Module>;
+
 /// A version that can be installed: what the cloud offered, already
 /// downloaded and checked.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "file::TargetFile", into = "file::TargetFile")]
 pub struct Target {
+    /// The platform version.
     pub version: String,
-    pub api: String,
-    pub web: String,
+    pub modules: Modules,
     /// The package, already checked against its SHA-256.
     pub package: PathBuf,
     #[serde(default)]
@@ -27,10 +44,11 @@ pub struct Target {
 
 /// The version installed before applying: to go back to it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "file::PreviousFile", into = "file::PreviousFile")]
 pub struct Previous {
+    /// The platform version.
     pub version: String,
-    pub api: String,
-    pub web: String,
+    pub modules: Modules,
     /// A copy of its package's files (the ones `manifest` lists).
     pub package: PathBuf,
     pub manifest: Vec<String>,
@@ -253,11 +271,27 @@ impl State {
 mod tests {
     use super::*;
 
+    pub(super) fn modules(version: &str) -> Modules {
+        let module = |images: &[(&str, &str)]| Module {
+            version: version.into(),
+            images: images
+                .iter()
+                .map(|(name, repo)| (name.to_string(), format!("{repo}:{version}@sha256:a")))
+                .collect(),
+        };
+        Modules::from([
+            (
+                "quality-data".into(),
+                module(&[("api", "r/api"), ("web", "r/web")]),
+            ),
+            ("orchestrator".into(), module(&[("server", "r/orch")])),
+        ])
+    }
+
     fn target() -> Target {
         Target {
             version: "1.3.0".into(),
-            api: "r/api:1.3.0@sha256:a".into(),
-            web: "r/web:1.3.0@sha256:b".into(),
+            modules: modules("1.3.0"),
             package: "/var/lib/quality-data/updater/packages/1.3.0.tar.gz".into(),
             notes: String::new(),
         }
@@ -273,12 +307,11 @@ mod tests {
             target: target(),
             previous: Previous {
                 version: "1.2.0".into(),
-                api: "r/api:1.2.0".into(),
-                web: "r/web:1.2.0".into(),
+                modules: modules("1.2.0"),
                 package: "/x/1.2.0.tar".into(),
                 manifest: vec!["compose.yml".into()],
             },
-            backup: "/var/backups/quality-data/quality-data-1".into(),
+            backup: "/var/lib/quality-data/backups/quality-data-1".into(),
         };
         s.failed.push("1.2.5".into());
         s.save(&path).unwrap();

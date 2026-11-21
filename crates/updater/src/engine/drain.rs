@@ -98,8 +98,7 @@ pub(super) fn back_up(
             backup,
             Previous {
                 version: installed.version,
-                api: installed.api,
-                web: installed.web,
+                modules: installed.modules,
                 package,
                 manifest,
             },

@@ -26,7 +26,7 @@ pub(super) fn roll_back(
         // What the new one brought and the previous one did not have.
         let new = host.manifest(&target.package).unwrap_or_default();
         host.put_package(&previous.package, &difference(&new, &previous.manifest))?;
-        host.put_version(&previous.version, &previous.api, &previous.web)?;
+        host.put_version(&previous.version, &previous.modules)?;
         host.start()?;
         host.healthy(None)
     };

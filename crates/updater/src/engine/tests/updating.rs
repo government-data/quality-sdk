@@ -98,3 +98,19 @@ fn if_the_backup_fails_nothing_is_touched() {
     assert!(!f.did("put_version:1.3.0"));
     assert!(!f.maintenance.get());
 }
+
+#[test]
+fn every_module_of_the_version_reaches_the_host() {
+    let f = Fake::new();
+    let mut s = State::new("1.2.0");
+    run(&f, &mut s, Who::Person);
+    assert_eq!(s.installed_version, "1.3.0");
+    // Every module with every image, as offered.
+    assert_eq!(*f.put.borrow(), [("1.3.0".to_string(), modules("1.3.0"))]);
+    // What was installed was kept to go back to.
+    let previous = f.saved.borrow().iter().find_map(|g| match &g.phase {
+        Phase::Applying { previous, .. } => Some(previous.clone()),
+        _ => None,
+    });
+    assert_eq!(previous.unwrap().modules, modules("1.2.0"));
+}

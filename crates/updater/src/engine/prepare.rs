@@ -160,8 +160,7 @@ fn prepare(host: &dyn Host, s: &mut State, offer: Offer, now: DateTime<Utc>) -> 
             s.phase = Phase::Prepared {
                 target: Target {
                     version: offer.version,
-                    api: offer.api,
-                    web: offer.web,
+                    modules: offer.modules,
                     package,
                     notes: offer.notes,
                 },
