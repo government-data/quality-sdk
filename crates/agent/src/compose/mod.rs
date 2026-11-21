@@ -128,29 +128,36 @@ impl DockerCompose {
 
     /// `docker compose` for `module`, then `args`.
     pub fn compose(&self, module: &str, args: &[&str]) -> Result<Cmd, String> {
-        check_module(module)?;
-        let dir = self.install.join(module);
-        let current = dir.join("current");
-        let mut all = vec![
-            "compose".to_string(),
-            "--project-name".into(),
-            module.into(),
-            "--project-directory".into(),
-            current.display().to_string(),
-            "--file".into(),
-            current.join("compose.yml").display().to_string(),
-            "--env-file".into(),
-            dir.join(".env").display().to_string(),
-        ];
-        all.extend(args.iter().map(|a| (*a).to_string()));
-        Ok(Cmd::new("docker", all))
+        command(&self.install, module, args)
     }
 
     /// Run `docker compose` for `module`.
     pub fn run(&self, module: &str, args: &[&str]) -> Result<String, String> {
         self.runner.run(&self.compose(module, args)?)
     }
+}
 
+/// `docker compose` for `module` installed under `install`, then `args`.
+pub fn command(install: &Path, module: &str, args: &[&str]) -> Result<Cmd, String> {
+    check_module(module)?;
+    let dir = install.join(module);
+    let current = dir.join("current");
+    let mut all = vec![
+        "compose".to_string(),
+        "--project-name".into(),
+        module.into(),
+        "--project-directory".into(),
+        current.display().to_string(),
+        "--file".into(),
+        current.join("compose.yml").display().to_string(),
+        "--env-file".into(),
+        dir.join(".env").display().to_string(),
+    ];
+    all.extend(args.iter().map(|a| (*a).to_string()));
+    Ok(Cmd::new("docker", all))
+}
+
+impl DockerCompose {
     /// The record, if any version was put.
     pub fn read_record(&self) -> Result<Option<Record>, String> {
         match std::fs::read(&self.record) {
