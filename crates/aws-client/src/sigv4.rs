@@ -6,8 +6,8 @@ use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 
-use super::credentials::Credentials;
-use super::http::Request;
+use crate::credentials::Credentials;
+use crate::http::Request;
 
 /// The hex SHA-256 of a payload, as `x-amz-content-sha256` carries it.
 pub fn payload_hash(body: &[u8]) -> String {

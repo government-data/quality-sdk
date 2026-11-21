@@ -1,14 +1,14 @@
-//! The S3 calls the installation role may make (decision 0001): read
-//! `index/` and `packages/`, write its own `reports/<id>/`. Signed with
-//! SigV4 and the Roles Anywhere credentials.
+//! An AWS account as one set of credentials reaches it ([`Account`]), and
+//! the S3 calls on the release bucket ([`Bucket`]): get and put an object,
+//! signed with SigV4.
 
 use std::rc::Rc;
 
 use chrono::Utc;
 
-use super::credentials::CredentialSource;
-use super::http::{Request, Response, Transport};
-use super::sigv4::{payload_hash, sign, uri_encode};
+use crate::credentials::CredentialSource;
+use crate::http::{Request, Response, Transport};
+use crate::sigv4::{payload_hash, sign, uri_encode};
 
 /// Why an AWS call did not do what was asked.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,8 +32,8 @@ impl std::fmt::Display for AwsError {
     }
 }
 
-/// The AWS account as the installation role reaches it: its region, its
-/// credentials and the way out. The bucket and the registry share it.
+/// An AWS account as one set of credentials reaches it: its region, its
+/// credentials and the way out. Every client of a service shares it.
 pub struct Account {
     region: String,
     credentials: Box<dyn CredentialSource>,
@@ -66,7 +66,7 @@ impl Account {
     }
 
     /// Sign `request` for `service` and send it; `what` names it in errors.
-    pub(crate) fn send(
+    pub fn send(
         &self,
         service: &str,
         mut request: Request,
@@ -95,7 +95,7 @@ impl Account {
     }
 }
 
-/// The release bucket, as the installation role sees it.
+/// The release bucket, as the account's credentials may reach it.
 #[derive(Debug, Clone)]
 pub struct Bucket {
     account: Rc<Account>,
@@ -156,7 +156,7 @@ fn path_of(url: &str) -> &str {
 }
 
 /// A 2xx answer, or the error its status and S3 code say.
-pub(crate) fn check(what: &str, r: Response) -> Result<Response, AwsError> {
+pub fn check(what: &str, r: Response) -> Result<Response, AwsError> {
     if (200..300).contains(&r.status) {
         return Ok(r);
     }
@@ -184,66 +184,9 @@ fn error_code(body: &[u8]) -> Option<String> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
-    use super::super::credentials::Credentials;
+mod tests {
     use super::*;
-
-    /// Fixed credentials.
-    pub(crate) struct Fixed;
-    impl CredentialSource for Fixed {
-        fn credentials(&self) -> Result<Credentials, String> {
-            Ok(Credentials {
-                access_key_id: "ASIAEXAMPLE".into(),
-                secret_access_key: "secret".into(),
-                session_token: Some("token".into()),
-                expiration: None,
-            })
-        }
-    }
-
-    /// A fake AWS: answers by method and URL, and keeps what it was sent.
-    #[derive(Default, Clone)]
-    pub(crate) struct FakeAws {
-        pub(crate) answers: Rc<RefCell<Vec<(String, Response)>>>,
-        pub(crate) sent: Rc<RefCell<Vec<Request>>>,
-    }
-
-    impl FakeAws {
-        /// Answer `"GET <url suffix>"` with `status` and `body`.
-        pub(crate) fn answer(&self, what: &str, status: u16, body: &[u8]) {
-            let r = Response {
-                status,
-                body: body.to_vec(),
-            };
-            self.answers.borrow_mut().push((what.into(), r));
-        }
-    }
-
-    impl Transport for FakeAws {
-        fn send(&self, r: Request) -> Result<Response, String> {
-            let found = self.answers.borrow().iter().find_map(|(what, answer)| {
-                let (method, suffix) = what.split_once(' ').unwrap();
-                (r.method == method && r.url.ends_with(suffix)).then(|| answer.clone())
-            });
-            self.sent.borrow_mut().push(r);
-            found.ok_or_else(|| "connection refused".into())
-        }
-    }
-
-    pub(crate) fn account(aws: &FakeAws) -> Rc<Account> {
-        Rc::new(Account::new(
-            "us-east-1",
-            Box::new(Fixed),
-            Box::new(aws.clone()),
-        ))
-    }
-
-    pub(crate) fn bucket(aws: &FakeAws) -> Bucket {
-        Bucket::new(account(aws), "releases")
-    }
+    use crate::fake::{bucket, FakeAws};
 
     #[test]
     fn an_object_is_read_with_a_signed_request() {

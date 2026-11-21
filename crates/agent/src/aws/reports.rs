@@ -79,8 +79,8 @@ impl<'a> Report<'a> {
 mod tests {
     use chrono::TimeZone;
 
-    use super::super::client::tests::{bucket, FakeAws};
     use super::*;
+    use aws_client::fake::{bucket, FakeAws};
 
     #[test]
     fn an_outcome_is_written_under_the_installation() {

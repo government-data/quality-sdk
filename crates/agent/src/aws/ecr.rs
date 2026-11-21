@@ -95,8 +95,8 @@ impl Ecr {
 
 #[cfg(test)]
 mod tests {
-    use super::super::client::tests::{account, FakeAws};
     use super::*;
+    use aws_client::fake::{account, FakeAws};
 
     #[test]
     fn the_token_gives_the_registry_and_its_credential() {

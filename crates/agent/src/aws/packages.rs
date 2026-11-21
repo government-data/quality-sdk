@@ -68,8 +68,8 @@ fn sha256(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::client::tests::{bucket, FakeAws};
     use super::*;
+    use aws_client::fake::{bucket, FakeAws};
 
     fn package(body: &[u8]) -> OfferedPackage {
         OfferedPackage {

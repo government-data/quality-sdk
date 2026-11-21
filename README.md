@@ -131,6 +131,9 @@ never names a module. Module-to-module and agent traffic goes through the
 | -------------------- | ------------------------------------------------------------------------------------------------------ |
 | `infra/aws/`         | The AWS side in Terraform: S3 releases bucket, ECR, KMS signing key, IAM Roles Anywhere, publish role. |
 | `crates/index-model` | The signed version index: model, validation, signature check and rollout. Pure, no I/O.                |
+| `crates/updater`     | The update engine: a state machine that survives a crash, behind its `Host` trait.                     |
+| `crates/agent`       | The installation's agent (`quality-data-agent`) and its adapters.                                      |
+| `crates/aws-client`  | The few AWS calls, signed with SigV4 by hand (no AWS SDK), shared by the agent and the CLI.            |
 | `.github/workflows/` | CI checks for Terraform and Rust.                                                                      |
 
 Design records are internal and are not part of this repository.
