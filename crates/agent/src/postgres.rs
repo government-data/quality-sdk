@@ -73,8 +73,9 @@ fn check_database(name: &str) -> Result<(), String> {
 }
 
 impl Postgres {
-    /// quality-data's `postgres` service, at `paths`.
-    pub fn new(paths: &crate::paths::Paths) -> Self {
+    /// quality-data's `postgres` service, at `paths`; the modules' volumes
+    /// emptied with `helper` before a restore.
+    pub fn new(paths: &crate::paths::Paths, helper: &str) -> Self {
         Self {
             install: paths.install_dir().to_path_buf(),
             module: "quality-data".into(),
@@ -82,7 +83,7 @@ impl Postgres {
             backups: paths.backups_dir(),
             runner: Box::new(crate::command::System),
             wait_secs: 300,
-            data: ModuleData::new(paths),
+            data: ModuleData::new(paths, helper),
         }
     }
 

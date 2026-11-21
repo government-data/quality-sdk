@@ -13,11 +13,13 @@
 //! key written whole; a volume **emptied first** (decision 0003 point 5),
 //! then its archive copied into the stopped service's container, so it
 //! holds the backup's files only. The volume is emptied by a throwaway
-//! container of the service's own image with the stopped container's
-//! mounts (`docker run --rm --volumes-from <container> --entrypoint find
-//! <image> <path> -mindepth 1 -delete`, as root, no network): it reaches
-//! the very volume the container has, named or anonymous. A piece that is
-//! not critical is not backed up.
+//! container of the agent's helper image (busybox, pinned by digest and
+//! pulled with every version, so a module whose own image has no `find`
+//! is restored too) with the stopped container's mounts (`docker run --rm
+//! --volumes-from <container> --entrypoint find <helper> <path> -mindepth
+//! 1 -delete`, as root, no network): it reaches the very volume the
+//! container has, named or anonymous. A piece that is not critical is not
+//! backed up.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -55,6 +57,8 @@ pub struct ModuleData {
     /// `/var/lib/quality-data/updater/installed.json`: which modules.
     pub record: PathBuf,
     pub runner: Box<dyn Runner>,
+    /// The image that empties a volume (`<repo>@sha256:<digest>`).
+    pub helper: String,
 }
 
 impl std::fmt::Debug for ModuleData {
@@ -92,12 +96,14 @@ fn check_archive(file: &Path) -> Result<(), String> {
 }
 
 impl ModuleData {
-    /// The installation's, at `paths`, running the system's `docker`.
-    pub fn new(paths: &crate::paths::Paths) -> Self {
+    /// The installation's, at `paths`, running the system's `docker` and
+    /// emptying volumes with `helper`.
+    pub fn new(paths: &crate::paths::Paths, helper: &str) -> Self {
         Self {
             install: paths.install_dir().to_path_buf(),
             record: paths.data_dir().join("updater/installed.json"),
             runner: Box::new(crate::command::System),
+            helper: helper.into(),
         }
     }
 
@@ -232,7 +238,7 @@ impl ModuleData {
             .find(|l| !l.is_empty())
             .ok_or_else(|| format!("{service} has no container"))?;
         let inspect = Cmd::new("docker", ["inspect", container]);
-        let (image, mounts) = image_and_mounts(&self.runner.run(&inspect)?)?;
+        let mounts = mounts(&self.runner.run(&inspect)?)?;
         if !mounts.iter().any(|m| m == path) {
             return Err(format!("{path} is not a volume of {service}'s container"));
         }
@@ -249,7 +255,7 @@ impl ModuleData {
                 container,
                 "--entrypoint",
                 "find",
-                &image,
+                &self.helper,
                 path,
                 "-mindepth",
                 "1",
@@ -267,24 +273,17 @@ impl ModuleData {
     }
 }
 
-/// A container's image and where its mounts are, from `docker inspect`.
-fn image_and_mounts(inspect: &str) -> Result<(String, Vec<String>), String> {
+/// Where a container's mounts are, from `docker inspect`.
+fn mounts(inspect: &str) -> Result<Vec<String>, String> {
     let v: serde_json::Value =
         serde_json::from_str(inspect).map_err(|e| format!("docker inspect does not read: {e}"))?;
-    let c = &v[0];
-    let image = c["Image"]
-        .as_str()
-        .filter(|i| !i.is_empty() && !i.starts_with('-'))
-        .ok_or("docker inspect names no image")?;
-    let mounts = c["Mounts"]
+    let all = v[0]["Mounts"]
         .as_array()
-        .map(|all| {
-            all.iter()
-                .filter_map(|m| m["Destination"].as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    Ok((image.to_string(), mounts))
+        .ok_or("docker inspect names no container")?;
+    Ok(all
+        .iter()
+        .filter_map(|m| m["Destination"].as_str().map(str::to_string))
+        .collect())
 }
 
 fn make_dirs(file: &Path) -> Result<(), String> {

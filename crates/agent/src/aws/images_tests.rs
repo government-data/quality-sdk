@@ -62,8 +62,24 @@ fn every_image_is_pulled_once_from_the_registry() {
         ("orchestrator", "worker", api.clone()),
     ]);
     let r = Recorder::default();
-    pull_all(&o, &r).unwrap();
+    pull_all(&o, &[], &r).unwrap();
     assert_eq!(*r.0.borrow(), [(HOST.to_string(), vec![server, api])]);
+}
+
+#[test]
+fn the_agent_s_own_images_are_pulled_with_the_version_s_from_the_registry_only() {
+    let api = format!(
+        "{HOST}/quality-data/quality-data/api@sha256:{}",
+        digest('a')
+    );
+    let helper = format!("{HOST}/quality-data/tools/busybox@sha256:{}", digest('c'));
+    let o = offer(&[("quality-data", "api", api.clone())]);
+    let r = Recorder::default();
+    pull_all(&o, std::slice::from_ref(&helper), &r).unwrap();
+    assert_eq!(*r.0.borrow(), [(HOST.to_string(), vec![api, helper])]);
+    let outside = format!("docker.io/library/busybox@sha256:{}", digest('c'));
+    let err = pull_all(&o, &[outside], &Recorder::default()).unwrap_err();
+    assert!(err.starts_with("the agent: docker.io"), "{err}");
 }
 
 #[test]
@@ -75,7 +91,7 @@ fn an_image_outside_the_registry_or_not_pinned_is_refused() {
         format!("{HOST}/quality-data/x@sha256:abc"),
     ] {
         let r = Recorder::default();
-        let err = pull_all(&offer(&[("m", "i", image.clone())]), &r).unwrap_err();
+        let err = pull_all(&offer(&[("m", "i", image.clone())]), &[], &r).unwrap_err();
         assert!(
             err.contains("is not pinned in the installation's registry"),
             "{image}: {err}"
@@ -84,7 +100,7 @@ fn an_image_outside_the_registry_or_not_pinned_is_refused() {
     }
     let mut o = offer(&[]);
     o.registry = None;
-    assert!(pull_all(&o, &Recorder::default()).is_err());
+    assert!(pull_all(&o, &[], &Recorder::default()).is_err());
 }
 
 /// A fake `docker` that writes down its arguments and what came on stdin.

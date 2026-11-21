@@ -5,6 +5,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::rc::Rc;
 
 use super::*;
+
+const HELPER: &str = "r/tools/busybox@sha256:b0b";
 use crate::command::fake::Fake;
 use crate::host::Database;
 use crate::paths::Paths;
@@ -33,7 +35,7 @@ fn server(entries: &str) -> Fake {
 
 fn postgres(root: &Path, fake: Fake) -> (Postgres, Rc<Fake>) {
     let fake = Rc::new(fake);
-    let mut p = Postgres::new(&Paths::under(root));
+    let mut p = Postgres::new(&Paths::under(root), HELPER);
     p.runner = Box::new(Shared(fake.clone()));
     (p, fake)
 }
