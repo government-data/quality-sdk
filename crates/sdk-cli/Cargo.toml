@@ -20,6 +20,8 @@ path = "src/main.rs"
 # version to the signed index.
 [dependencies]
 agent.workspace = true
+aws-client.workspace = true
+hex.workspace = true
 p256.workspace = true
 rand_core.workspace = true
 # The OID of SHA-256, which names the signatures in certificates.

@@ -634,6 +634,8 @@ name = "sdk-cli"
 version = "0.1.0"
 dependencies = [
  "agent",
+ "aws-client",
+ "hex",
  "p256",
  "rand_core",
  "sha2",
