@@ -10,9 +10,14 @@
 //!   `modules/<module>/keys/<path>` and compared.
 //!
 //! `modules.json` lists what was backed up, so a restore puts it back: a
-//! key written whole, a volume's archive copied into the stopped service's
-//! container (the archive's files are its own again; a file it does not
-//! have is kept). A piece that is not critical is not backed up.
+//! key written whole; a volume **emptied first** (decision 0003 point 5),
+//! then its archive copied into the stopped service's container, so it
+//! holds the backup's files only. The volume is emptied by a throwaway
+//! container of the service's own image with the stopped container's
+//! mounts (`docker run --rm --volumes-from <container> --entrypoint find
+//! <image> <path> -mindepth 1 -delete`, as root, no network): it reaches
+//! the very volume the container has, named or anonymous. A piece that is
+//! not critical is not backed up.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -20,7 +25,7 @@ use std::path::{Path, PathBuf};
 use module_manifest::Manifest;
 use serde::{Deserialize, Serialize};
 
-use crate::command::Runner;
+use crate::command::{Cmd, Runner};
 use crate::compose;
 
 /// The list of what was backed up, in a backup's directory.
@@ -193,15 +198,9 @@ impl ModuleData {
                     service,
                     path,
                     file,
-                } => {
-                    let parent = Path::new(path).parent().unwrap_or(Path::new("/"));
-                    let target = format!("{service}:{}", parent.display());
-                    let cmd = compose::command(&self.install, module, &["cp", "-", &target])?
-                        .stdin(&backup.join(file));
-                    self.runner
-                        .run(&cmd)
-                        .map_err(|e| format!("restoring {module} {path}: {e}"))?;
-                }
+                } => self
+                    .restore_volume(module, service, path, &backup.join(file))
+                    .map_err(|e| format!("restoring {module} {path}: {e}"))?,
                 Piece::Key { module, path, file } => {
                     let bytes = read_file(&backup.join(file))?;
                     let target = self.install.join(module).join(path);
@@ -213,6 +212,79 @@ impl ModuleData {
         tracing::warn!(backup = %backup.display(), pieces = pieces.len(), "module data restored");
         Ok(())
     }
+}
+
+impl ModuleData {
+    /// The volume at `path` of `service`'s stopped container emptied, then
+    /// `archive` extracted into it.
+    fn restore_volume(
+        &self,
+        module: &str,
+        service: &str,
+        path: &str,
+        archive: &Path,
+    ) -> Result<(), String> {
+        let ps = compose::command(&self.install, module, &["ps", "--all", "--quiet", service])?;
+        let out = self.runner.run(&ps)?;
+        let container = out
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .ok_or_else(|| format!("{service} has no container"))?;
+        let inspect = Cmd::new("docker", ["inspect", container]);
+        let (image, mounts) = image_and_mounts(&self.runner.run(&inspect)?)?;
+        if !mounts.iter().any(|m| m == path) {
+            return Err(format!("{path} is not a volume of {service}'s container"));
+        }
+        let empty = Cmd::new(
+            "docker",
+            [
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                "--user",
+                "0:0",
+                "--volumes-from",
+                container,
+                "--entrypoint",
+                "find",
+                &image,
+                path,
+                "-mindepth",
+                "1",
+                "-delete",
+            ],
+        );
+        self.runner
+            .run(&empty)
+            .map_err(|e| format!("emptying it: {e}"))?;
+        let parent = Path::new(path).parent().unwrap_or(Path::new("/"));
+        let target = format!("{service}:{}", parent.display());
+        let cp = compose::command(&self.install, module, &["cp", "-", &target])?.stdin(archive);
+        self.runner.run(&cp)?;
+        Ok(())
+    }
+}
+
+/// A container's image and where its mounts are, from `docker inspect`.
+fn image_and_mounts(inspect: &str) -> Result<(String, Vec<String>), String> {
+    let v: serde_json::Value =
+        serde_json::from_str(inspect).map_err(|e| format!("docker inspect does not read: {e}"))?;
+    let c = &v[0];
+    let image = c["Image"]
+        .as_str()
+        .filter(|i| !i.is_empty() && !i.starts_with('-'))
+        .ok_or("docker inspect names no image")?;
+    let mounts = c["Mounts"]
+        .as_array()
+        .map(|all| {
+            all.iter()
+                .filter_map(|m| m["Destination"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok((image.to_string(), mounts))
 }
 
 fn make_dirs(file: &Path) -> Result<(), String> {

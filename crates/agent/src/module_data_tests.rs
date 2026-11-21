@@ -17,11 +17,13 @@ fn root(name: &str) -> PathBuf {
     d
 }
 
-/// Writes `archive` to a command's standard output file, and keeps what
-/// ran.
+/// Writes `archive` to a command's standard output file, answers each
+/// command by the first of `answers` its line contains (`Ok("")`
+/// otherwise), and keeps what ran.
 #[derive(Default)]
 struct Cp {
     archive: Vec<u8>,
+    answers: RefCell<Vec<(&'static str, Result<String, String>)>>,
     ran: RefCell<Vec<Cmd>>,
 }
 
@@ -31,9 +33,16 @@ impl Runner for Rc<Cp> {
         if let Some(out) = &cmd.stdout {
             std::fs::write(out, &self.archive).unwrap();
         }
-        Ok(String::new())
+        let line = cmd.line();
+        let answers = self.answers.borrow();
+        let rule = answers.iter().find(|(text, _)| line.contains(text));
+        rule.map_or(Ok(String::new()), |(_, answer)| answer.clone())
     }
 }
+
+/// What `docker inspect` says of the stopped `api` container.
+const INSPECT: &str = r#"[{"Id":"c0ffee","Image":"sha256:1ma6e",
+    "Mounts":[{"Type":"volume","Destination":"/var/lib/dolt"}]}]"#;
 
 /// A tar of `dolt/` with one file, as `cp api:/var/lib/dolt -` gives it.
 fn archive() -> Vec<u8> {
@@ -65,6 +74,10 @@ fn installed(r: &Path, archive: Vec<u8>) -> (ModuleData, Rc<Cp>) {
     std::fs::write(&record, json).unwrap();
     let cp = Rc::new(Cp {
         archive,
+        answers: RefCell::new(vec![
+            (" ps --all --quiet api", Ok("c0ffee\n".into())),
+            ("docker inspect c0ffee", Ok(INSPECT.into())),
+        ]),
         ..Cp::default()
     });
     let mut data = ModuleData::new(&Paths::under(r));
@@ -156,14 +169,85 @@ fn a_restore_puts_back_each_key_and_copies_each_volume_s_archive_in() {
     data.restore(&dir).unwrap();
     assert_eq!(std::fs::read_to_string(&key).unwrap(), "key bytes");
     let ran = cp.ran.borrow();
-    let line = ran[1].line();
+    let copy = ran
+        .iter()
+        .position(|c| c.line().contains(" cp - "))
+        .unwrap();
+    let line = ran[copy].line();
     assert!(line.ends_with(".env cp - api:/var/lib"), "{line}");
     assert_eq!(
-        ran[1].stdin.as_deref(),
+        ran[copy].stdin.as_deref(),
         Some(
             dir.join("modules/quality-data/volumes/catalog.tar")
                 .as_path()
         )
     );
     std::fs::remove_dir_all(r).unwrap();
+}
+
+#[test]
+fn a_volume_is_emptied_through_its_container_s_mounts_before_its_archive_goes_in() {
+    let r = root("empty");
+    let dir = backup_dir(&r);
+    let (data, cp) = installed(&r, archive());
+    data.back_up_into(&dir, &["quality".into()]).unwrap();
+    cp.ran.borrow_mut().clear();
+    data.restore(&dir).unwrap();
+    let lines: Vec<String> = cp.ran.borrow().iter().map(Cmd::line).collect();
+    assert_eq!(lines.len(), 4, "{lines:?}");
+    assert!(
+        lines[0].ends_with(".env ps --all --quiet api"),
+        "{}",
+        lines[0]
+    );
+    assert_eq!(lines[1], "docker inspect c0ffee");
+    assert_eq!(
+        lines[2],
+        "docker run --rm --network none --user 0:0 --volumes-from c0ffee \
+         --entrypoint find sha256:1ma6e /var/lib/dolt -mindepth 1 -delete"
+    );
+    assert!(lines[3].ends_with(".env cp - api:/var/lib"), "{}", lines[3]);
+    std::fs::remove_dir_all(r).unwrap();
+}
+
+#[test]
+fn a_volume_that_cannot_be_emptied_is_not_restored_over() {
+    for (rule, answer, says) in [
+        (
+            " ps --all --quiet api",
+            Ok(String::new()),
+            "api has no container",
+        ),
+        (
+            "docker inspect c0ffee",
+            Ok(r#"[{"Image":"sha256:1ma6e","Mounts":[]}]"#.to_string()),
+            "/var/lib/dolt is not a volume of api's container",
+        ),
+        (
+            "docker inspect c0ffee",
+            Ok("[]".to_string()),
+            "names no image",
+        ),
+        (
+            "--entrypoint find",
+            Err("find: not found".to_string()),
+            "emptying it: find",
+        ),
+    ] {
+        let r = root("not-emptied");
+        let dir = backup_dir(&r);
+        let (data, cp) = installed(&r, archive());
+        data.back_up_into(&dir, &["quality".into()]).unwrap();
+        cp.answers.borrow_mut().insert(0, (rule, answer));
+        cp.ran.borrow_mut().clear();
+        let err = data.restore(&dir).unwrap_err();
+        assert!(
+            err.contains("restoring quality-data /var/lib/dolt"),
+            "{err}"
+        );
+        assert!(err.contains(says), "{err}");
+        let copied = cp.ran.borrow().iter().any(|c| c.line().contains(" cp - "));
+        assert!(!copied, "{says}: nothing is copied in");
+        std::fs::remove_dir_all(r).unwrap();
+    }
 }
