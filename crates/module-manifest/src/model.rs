@@ -29,6 +29,10 @@ pub struct Manifest {
     /// What its data is: what a backup covers.
     #[serde(default)]
     pub data: Data,
+    /// Where the core asks what work runs before an update (none: the
+    /// module has no work to drain).
+    #[serde(default)]
+    pub drain: Option<Drain>,
     // Sections later steps of decision 0002 define: accepted, not read yet.
     #[serde(default)]
     images: Option<IgnoredAny>,
@@ -115,6 +119,17 @@ pub struct RequiredCapability {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConsumerHold {
+    pub path: String,
+}
+
+/// An HTTP endpoint the module serves on its internal service inside the
+/// Compose network. The core calls it with `?horizon_secs=N` and it
+/// answers `{"running": <n>, "scheduled_soon": <n>}`; the core sums the
+/// answers of every installed module (decision 0002).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Drain {
+    /// Absolute (`/` first), without a query: the core adds it.
     pub path: String,
 }
 
