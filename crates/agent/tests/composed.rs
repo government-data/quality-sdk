@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
-use agent::host::{Adapters, AgentHost, Api, Clock, Cloud, Compose, Database, Packages};
+use agent::host::{
+    Adapters, AgentHost, Api, Clock, Cloud, Compose, Database, InstalledModule, Packages,
+};
 use agent::paths::Paths;
 use chrono::{DateTime, TimeZone, Utc};
 use updater::engine::{advance, CloudError, Drain, Installed, Offer, OfferedPackage, Who};
@@ -36,6 +38,9 @@ impl World {
     }
     fn did(&self, prefix: &str) -> bool {
         self.calls.borrow().iter().any(|c| c.starts_with(prefix))
+    }
+    fn count(&self, call: &str) -> usize {
+        self.calls.borrow().iter().filter(|c| *c == call).count()
     }
 }
 
@@ -96,9 +101,10 @@ impl Compose for FakeCompose {
         Ok(())
     }
     fn installed(&self) -> Result<Installed, String> {
+        let up = self.0.up.borrow().clone();
         Ok(Installed {
-            version: "1.2.0".into(),
-            modules: modules("1.2.0"),
+            modules: modules(&up),
+            version: up,
         })
     }
     fn modules_healthy(&self) -> Result<(), String> {
@@ -171,6 +177,17 @@ impl Api for FakeApi {
             ..Drain::default()
         })
     }
+    fn put_modules(&self, modules: &[InstalledModule]) -> Result<(), String> {
+        if self.0.api_down.get() {
+            return Err("connection refused".into());
+        }
+        let names: Vec<String> = modules
+            .iter()
+            .map(|m| format!("{}@{}", m.name, m.version))
+            .collect();
+        self.0.note(format!("api:modules:{}", names.join(",")));
+        Ok(())
+    }
     fn version(&self) -> Result<String, String> {
         let answers = self.0.answers.borrow().clone();
         Ok(answers.unwrap_or_else(|| self.0.up.borrow().clone()))
@@ -228,6 +245,7 @@ fn an_update_runs_through_every_adapter_and_its_state_is_on_disk() {
         "packages:put:quality-data:/packages/quality-data-1.3.0.tar.gz",
         "compose:put:1.3.0:quality-data",
         "compose:start",
+        "api:modules:quality-data@1.3.0",
         "compose:healthy",
         "packages:commands",
         "api:maintenance:false",
@@ -258,6 +276,40 @@ fn a_version_that_does_not_answer_as_expected_goes_back() {
     );
     assert!(world.did("compose:put:1.2.0"));
     assert_eq!(s.phase, Phase::Idle);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn quality_data_is_told_the_installed_modules_at_start_after_going_back_and_until_it_hears() {
+    let (world, host, root) = host("modules");
+    host.tell_modules_if_untold();
+    host.tell_modules_if_untold();
+    assert_eq!(world.count("api:modules:quality-data@1.2.0"), 1);
+    // A version that does not answer goes back: told after each start.
+    *world.answers.borrow_mut() = Some("1.2.0".into());
+    let mut s = State::new("1.2.0");
+    advance(&host, &mut s, Who::Person).unwrap();
+    let calls = world.calls.borrow().clone();
+    let told: Vec<&String> = calls
+        .iter()
+        .filter(|c| c.starts_with("api:modules"))
+        .collect();
+    assert_eq!(
+        told,
+        [
+            "api:modules:quality-data@1.2.0",
+            "api:modules:quality-data@1.3.0",
+            "api:modules:quality-data@1.2.0",
+        ]
+    );
+    // Not heard: told again before the next round, until it is.
+    world.api_down.set(true);
+    host.tell_modules();
+    world.api_down.set(false);
+    world.calls.borrow_mut().clear();
+    host.tell_modules_if_untold();
+    host.tell_modules_if_untold();
+    assert_eq!(world.count("api:modules:quality-data@1.2.0"), 1);
     std::fs::remove_dir_all(root).unwrap();
 }
 

@@ -10,13 +10,18 @@
 //! | [`Packages`] (package files) | `free_space`, `save_package`, `manifest`, `put_package`, `install_commands` |
 //! | [`Api`] (quality-data's `updater/v1`) | telling `save`, `orders`, `maintenance`, `drain`, the version of `healthy` |
 //!
+//! The host also tells quality-data which modules are installed
+//! ([`AgentHost::tell_modules`]) after every version it starts and when the
+//! agent starts, so the core knows them (decision 0003).
+//!
 //! `now`, `wait` and writing the state file are the agent's own.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use updater::engine::{CloudError, Drain, Host, Installed, Offer, OfferedPackage};
 use updater::policy::Orders;
 use updater::state::{Modules, Outcome, State};
@@ -72,6 +77,15 @@ pub trait Api {
     fn drain(&self, horizon: Duration) -> Result<Drain, String>;
     /// `GET /updater/v1/version`: the version of quality-data that answers.
     fn version(&self) -> Result<String, String>;
+    /// `PUT /updater/v1/modules`: every installed module, the whole list.
+    fn put_modules(&self, modules: &[InstalledModule]) -> Result<(), String>;
+}
+
+/// An installed module as `PUT /updater/v1/modules` names it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InstalledModule {
+    pub name: String,
+    pub version: String,
 }
 
 /// The time: the system's, or a fake one in tests.
@@ -118,6 +132,9 @@ pub struct AgentHost {
     /// in that order: the engine puts them a module after those it
     /// requires.
     put_order: RefCell<Vec<String>>,
+    /// quality-data has not been told the installed modules since the agent
+    /// started or a version was put.
+    modules_untold: Cell<bool>,
 }
 
 impl AgentHost {
@@ -126,6 +143,40 @@ impl AgentHost {
             adapters,
             state_file,
             put_order: RefCell::default(),
+            modules_untold: Cell::new(true),
+        }
+    }
+
+    /// Tell quality-data every installed module (`PUT /updater/v1/modules`,
+    /// the whole list, so telling it twice changes nothing). A failure is
+    /// logged and told again by [`AgentHost::tell_modules_if_untold`].
+    pub fn tell_modules(&self) {
+        let told = self.adapters.compose.installed().and_then(|i| {
+            let modules: Vec<InstalledModule> = i
+                .modules
+                .iter()
+                .map(|(name, m)| InstalledModule {
+                    name: name.clone(),
+                    version: m.version.clone(),
+                })
+                .collect();
+            self.adapters.api.put_modules(&modules)
+        });
+        match told {
+            Ok(()) => self.modules_untold.set(false),
+            Err(err) => {
+                self.modules_untold.set(true);
+                tracing::warn!("quality-data was not told the installed modules: {err}");
+            }
+        }
+    }
+
+    /// [`AgentHost::tell_modules`] when quality-data has not been told them
+    /// since the agent started or the last version was put (or telling it
+    /// failed): the service does it before each round.
+    pub fn tell_modules_if_untold(&self) {
+        if self.modules_untold.get() {
+            self.tell_modules();
         }
     }
 }
@@ -191,10 +242,15 @@ impl Host for AgentHost {
     }
     fn put_version(&self, version: &str, modules: &Modules) -> Result<(), String> {
         let order = std::mem::take(&mut *self.put_order.borrow_mut());
+        self.modules_untold.set(true);
         self.adapters.compose.put_version(version, modules, &order)
     }
+    /// The installed version's modules started, then quality-data told
+    /// which they are (after an install and after going back alike).
     fn start(&self) -> Result<(), String> {
-        self.adapters.compose.start()
+        let started = self.adapters.compose.start();
+        self.tell_modules();
+        started
     }
     /// quality-data answers (the expected version, if one is given), then
     /// every module is healthy.
