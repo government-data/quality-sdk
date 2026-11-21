@@ -12,11 +12,13 @@ installation opens no inbound port for this.
 
 > **Status.** Today the repository holds the AWS side in Terraform
 > (`infra/aws/`), the pure model of the signed index (`crates/index-model`),
-> the update engine (`crates/updater`) and the agent (`crates/agent`) with its
-> AWS adapter; `quality-data-agent check` checks the AWS side end to end
-> (`tools/verify/agent-aws.sh`). The agent's other adapters (quality-data's
-> API, Docker Compose, PostgreSQL, the package files), the CLI, the module
-> manifests and the integration between modules shown below are **planned**.
+> the update engine (`crates/updater`), the agent (`crates/agent`) with its
+> AWS adapter, and the `quality-sdk` CLI (`crates/sdk-cli`: `enrol`,
+> `sign-enrolment`, `revoke`, `publish`); `quality-data-agent check` checks the
+> AWS side end to end (`tools/verify/agent-aws.sh`). The agent's other adapters
+> (quality-data's API, Docker Compose, PostgreSQL, the package files), the
+> module manifests and the integration between modules shown below are
+> **planned**.
 
 ## Architecture
 
@@ -134,7 +136,7 @@ never names a module. Module-to-module and agent traffic goes through the
 | `crates/updater`     | The update engine: a state machine that survives a crash, behind its `Host` trait.                     |
 | `crates/agent`       | The installation's agent (`quality-data-agent`) and its adapters.                                      |
 | `crates/aws-client`  | The few AWS calls, signed with SigV4 by hand (no AWS SDK), shared by the agent and the CLI.            |
-| `crates/sdk-cli`     | The `quality-sdk` CLI: `enrol`, `sign-enrolment` and `revoke` (`publish` to come).                    |
+| `crates/sdk-cli`     | The `quality-sdk` CLI: `enrol`, `sign-enrolment`, `revoke` and `publish`.                             |
 | `.github/workflows/` | CI checks for Terraform and Rust.                                                                      |
 
 Design records are internal and are not part of this repository.
