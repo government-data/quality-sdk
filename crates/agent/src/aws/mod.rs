@@ -10,4 +10,5 @@ pub mod client;
 pub mod credentials;
 pub mod http;
 pub mod index;
+pub mod packages;
 pub mod sigv4;
