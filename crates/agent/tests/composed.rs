@@ -23,6 +23,10 @@ struct World {
     /// The version quality-data answers, when it is not the one up.
     answers: RefCell<Option<String>>,
     api_down: Cell<bool>,
+    /// The modules are unhealthy, whatever version runs.
+    unhealthy: Cell<bool>,
+    /// Restoring the database fails.
+    restore_fails: Cell<bool>,
     now: Cell<i64>,
 }
 
@@ -99,6 +103,9 @@ impl Compose for FakeCompose {
     }
     fn modules_healthy(&self) -> Result<(), String> {
         self.0.note("compose:healthy");
+        if self.0.unhealthy.get() {
+            return Err("api is unhealthy".into());
+        }
         Ok(())
     }
 }
@@ -111,6 +118,9 @@ impl Database for FakeDatabase {
     }
     fn restore(&self, _b: &Path) -> Result<(), String> {
         self.0.note("database:restore");
+        if self.0.restore_fails.get() {
+            return Err("pg_restore failed on scratch".into());
+        }
         Ok(())
     }
 }
@@ -261,5 +271,42 @@ fn without_the_api_the_state_is_still_written() {
     assert!(!world.did("api:state"));
     let stored = State::load(&Paths::under(&root).state_file()).unwrap();
     assert_eq!(stored.unwrap().installed_version, "1.3.0");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_restore_that_fails_leaves_every_module_stopped_and_is_reported() {
+    let (world, host, root) = host("restore-fails");
+    world.unhealthy.set(true);
+    world.restore_fails.set(true);
+    let mut s = State::new("1.2.0");
+    advance(&host, &mut s, Who::Person).unwrap();
+    assert!(matches!(s.phase, Phase::Critical { .. }), "{:?}", s.phase);
+    let last = s.last.as_ref().unwrap();
+    assert_eq!(last.kind, OutcomeKind::Critical);
+    assert!(
+        last.detail.contains("pg_restore failed on scratch"),
+        "{}",
+        last.detail
+    );
+    assert!(
+        last.detail.contains("every module is left stopped"),
+        "{}",
+        last.detail
+    );
+    let calls = world.calls.borrow().clone();
+    let restore = calls.iter().position(|c| c == "database:restore").unwrap();
+    // Stopped before the restore and again after it failed; nothing starts.
+    assert_eq!(calls[restore - 1], "compose:stop");
+    assert_eq!(calls[restore + 1], "compose:stop");
+    assert!(
+        !calls[restore..].iter().any(|c| c == "compose:start"),
+        "{calls:#?}"
+    );
+    assert!(world.did("cloud:report:Critical"));
+    // Critical: the next round does nothing by itself.
+    world.calls.borrow_mut().clear();
+    advance(&host, &mut s, Who::Service).unwrap();
+    assert!(!world.did("compose:start"));
     std::fs::remove_dir_all(root).unwrap();
 }
