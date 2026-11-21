@@ -13,6 +13,7 @@ repository = "https://github.com/quality-data/quality-sdk"
 
 [workspace.dependencies]
 # The SDK's own crates.
+aws-client = { path = "crates/aws-client" }
 index-model = { path = "crates/index-model" }
 updater = { path = "crates/updater" }
 

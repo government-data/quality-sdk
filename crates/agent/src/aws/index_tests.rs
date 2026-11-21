@@ -6,8 +6,8 @@ use p256::ecdsa::{Signature, SigningKey};
 use p256::pkcs8::{EncodePublicKey, LineEnding};
 use serde_json::{json, Value};
 
-use super::super::client::tests::{bucket, FakeAws};
 use super::*;
+use aws_client::fake::{bucket, FakeAws};
 
 pub(crate) const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 

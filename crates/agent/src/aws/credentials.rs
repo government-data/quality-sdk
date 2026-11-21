@@ -6,32 +6,8 @@
 
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::Mutex;
 
-use chrono::{DateTime, Duration, Utc};
-use serde::Deserialize;
-
-/// Temporary credentials. Never printed.
-#[derive(Clone, PartialEq, Eq)]
-pub struct Credentials {
-    pub access_key_id: String,
-    pub secret_access_key: String,
-    pub session_token: Option<String>,
-    pub expiration: Option<DateTime<Utc>>,
-}
-
-impl std::fmt::Debug for Credentials {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Credentials")
-            .field("expiration", &self.expiration)
-            .finish_non_exhaustive()
-    }
-}
-
-/// Where credentials come from.
-pub trait CredentialSource {
-    fn credentials(&self) -> Result<Credentials, String>;
-}
+pub use aws_client::credentials::{parse_process, Cached, CredentialSource, Credentials};
 
 /// `aws_signing_helper credential-process` with the enrolment certificate.
 #[derive(Debug, Clone)]
@@ -43,17 +19,6 @@ pub struct SigningHelper {
     pub profile_arn: String,
     pub role_arn: String,
     pub region: String,
-}
-
-/// What `credential-process` prints (the AWS CLI's process credentials).
-#[derive(Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct Process {
-    version: u32,
-    access_key_id: String,
-    secret_access_key: String,
-    session_token: Option<String>,
-    expiration: Option<DateTime<Utc>>,
 }
 
 impl CredentialSource for SigningHelper {
@@ -77,62 +42,12 @@ impl CredentialSource for SigningHelper {
             let why: String = why.trim().chars().take(300).collect();
             return Err(format!("Roles Anywhere refused the certificate: {why}"));
         }
-        parse(&output.stdout)
-    }
-}
-
-fn parse(stdout: &[u8]) -> Result<Credentials, String> {
-    let p: Process = serde_json::from_slice(stdout)
-        .map_err(|_| "the signing helper printed no credentials".to_string())?;
-    if p.version != 1 {
-        return Err(format!("credential-process version {} is not 1", p.version));
-    }
-    Ok(Credentials {
-        access_key_id: p.access_key_id,
-        secret_access_key: p.secret_access_key,
-        session_token: p.session_token,
-        expiration: p.expiration,
-    })
-}
-
-/// Credentials kept until five minutes before they expire.
-#[derive(Debug)]
-pub struct Cached<S> {
-    source: S,
-    kept: Mutex<Option<Credentials>>,
-}
-
-/// How long before expiring credentials are renewed.
-const MARGIN: Duration = Duration::minutes(5);
-
-impl<S: CredentialSource> Cached<S> {
-    pub fn new(source: S) -> Self {
-        Self {
-            source,
-            kept: Mutex::new(None),
-        }
-    }
-}
-
-impl<S: CredentialSource> CredentialSource for Cached<S> {
-    fn credentials(&self) -> Result<Credentials, String> {
-        let mut kept = self
-            .kept
-            .lock()
-            .map_err(|_| "credentials lock poisoned".to_string())?;
-        let fresh = |c: &Credentials| c.expiration.is_some_and(|e| e - MARGIN > Utc::now());
-        if let Some(c) = kept.as_ref().filter(|c| fresh(c)) {
-            return Ok(c.clone());
-        }
-        let c = self.source.credentials()?;
-        *kept = Some(c.clone());
-        Ok(c)
+        parse_process(&output.stdout)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
     use std::os::unix::fs::PermissionsExt;
 
     use super::*;
@@ -190,36 +105,5 @@ echo '{"Version":1,"AccessKeyId":"ASIAX","SecretAccessKey":"s","SessionToken":"t
         assert!(h.credentials().unwrap_err().contains("could not run"));
         std::fs::remove_dir_all(dir).unwrap();
         std::fs::remove_dir_all(dir2).unwrap();
-    }
-
-    struct Counting(Cell<u32>, Option<DateTime<Utc>>);
-    impl CredentialSource for Counting {
-        fn credentials(&self) -> Result<Credentials, String> {
-            self.0.set(self.0.get() + 1);
-            Ok(Credentials {
-                access_key_id: "a".into(),
-                secret_access_key: "s".into(),
-                session_token: None,
-                expiration: self.1,
-            })
-        }
-    }
-
-    #[test]
-    fn credentials_are_kept_until_shortly_before_they_expire() {
-        let hour = Cached::new(Counting(
-            Cell::new(0),
-            Some(Utc::now() + Duration::hours(1)),
-        ));
-        hour.credentials().unwrap();
-        hour.credentials().unwrap();
-        assert_eq!(hour.source.0.get(), 1);
-        let soon = Cached::new(Counting(
-            Cell::new(0),
-            Some(Utc::now() + Duration::minutes(2)),
-        ));
-        soon.credentials().unwrap();
-        soon.credentials().unwrap();
-        assert_eq!(soon.source.0.get(), 2);
     }
 }

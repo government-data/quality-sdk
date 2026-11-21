@@ -9,10 +9,10 @@ use chrono::Utc;
 use sha2::{Digest, Sha256};
 use updater::state::OutcomeKind;
 
-use super::super::client::tests::{account, FakeAws};
 use super::super::ecr::RegistryAuth;
 use super::super::index::tests::{index, reader, serving};
 use super::*;
+use aws_client::fake::{account, FakeAws};
 
 /// Remembers what it was asked to pull.
 #[derive(Clone, Default)]

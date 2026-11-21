@@ -4,15 +4,15 @@
 //!
 //! Each piece is behind a port ([`credentials::CredentialSource`],
 //! [`http::Transport`]) so it is tested with fakes: no test calls a real
-//! account.
+//! account. The signed calls themselves are the `aws-client` crate's,
+//! shared with the `quality-sdk` CLI.
 
-pub mod client;
+pub use aws_client::{client, http, sigv4};
+
 pub mod cloud;
 pub mod credentials;
 pub mod ecr;
-pub mod http;
 pub mod images;
 pub mod index;
 pub mod packages;
 pub mod reports;
-pub mod sigv4;
