@@ -1,7 +1,7 @@
 //! quality-data's API as the engine asks it: the `updater/v1` protocol
 //! (decision 0003), served by quality-data on its `internal` entry point
 //! with mTLS. The agent holds a client only, behind the [`Transport`] port:
-//! the real one is HTTPS with the agent's certificate, the tests use a local
+//! the real one is HTTPS with the agent's certificate ([`tls`]), the tests use a local
 //! fake server.
 //!
 //! | Call | `Host` |
@@ -21,6 +21,8 @@ use updater::policy::Orders;
 use updater::state::State;
 
 use crate::host::Api;
+
+pub mod tls;
 
 /// The protocol's prefix.
 pub const PREFIX: &str = "/updater/v1";
@@ -46,6 +48,20 @@ impl UpdaterApi {
             base: base.trim_end_matches('/').to_string(),
             transport,
         }
+    }
+
+    /// The client the settings name, with the agent's certificates at
+    /// `paths`.
+    pub fn from_settings(
+        settings: &crate::config::ApiSettings,
+        paths: &crate::paths::Paths,
+    ) -> Result<Self, String> {
+        let transport = tls::https(
+            &paths.internal_ca(),
+            &paths.internal_certificate(),
+            &paths.internal_private_key(),
+        )?;
+        Ok(Self::new(&settings.url, Box::new(transport)))
     }
 
     /// One call; its JSON answer (`null` when it has none).

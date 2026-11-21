@@ -63,6 +63,23 @@ impl Paths {
         self.config.join("enrolment/request.csr")
     }
 
+    /// The installation's CA certificate, which quality-data's `internal`
+    /// entry point is checked against (`updater/v1`).
+    pub fn internal_ca(&self) -> PathBuf {
+        self.config.join("internal/ca.pem")
+    }
+
+    /// The agent's certificate for the `internal` entry point, issued by
+    /// the installation's CA.
+    pub fn internal_certificate(&self) -> PathBuf {
+        self.config.join("internal/certificate.pem")
+    }
+
+    /// That certificate's private key.
+    pub fn internal_private_key(&self) -> PathBuf {
+        self.config.join("internal/private-key.pem")
+    }
+
     /// The index's public key, pinned at enrolment.
     pub fn index_key(&self) -> PathBuf {
         self.config.join("index-key.pem")
@@ -127,6 +144,10 @@ mod tests {
             Path::new("/var/lib/quality-data/updater/releases")
         );
         assert_eq!(p.backups_dir(), Path::new("/var/lib/quality-data/backups"));
+        assert_eq!(
+            p.internal_certificate(),
+            Path::new("/etc/quality-data/internal/certificate.pem")
+        );
     }
 
     #[test]

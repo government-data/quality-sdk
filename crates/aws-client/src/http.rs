@@ -77,6 +77,15 @@ impl Default for Https {
     }
 }
 
+impl Https {
+    /// HTTPS through `agent`, configured by its user (its own roots, a
+    /// client certificate). Its statuses must not be errors
+    /// (`http_status_as_error(false)`): every status is a [`Response`].
+    pub fn with_agent(agent: ureq::Agent) -> Self {
+        Self { agent }
+    }
+}
+
 impl Transport for Https {
     fn send(&self, r: Request) -> Result<Response, String> {
         let mut builder = ureq::http::Request::builder()

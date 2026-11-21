@@ -11,6 +11,9 @@
 //! profile_arn = "arn:aws:rolesanywhere:us-east-1:123456789012:profile/..."
 //! role_arn = "arn:aws:iam::123456789012:role/quality-data-installation"
 //! signing_helper = "/usr/local/bin/aws_signing_helper"   # optional
+//!
+//! [api]                        # optional: quality-data's `updater/v1`
+//! url = "https://quality-data.internal:8443"   # its `internal` entry point
 //! ```
 //!
 //! It holds no secret: the credentials come from the enrolment certificate,
@@ -32,6 +35,18 @@ pub struct Config {
     pub installation: String,
     pub channel: Channel,
     pub aws: Aws,
+    /// quality-data's `updater/v1`; without it the agent tells the API
+    /// nothing (commands such as `check` do not need it).
+    #[serde(default)]
+    pub api: Option<ApiSettings>,
+}
+
+/// Where quality-data serves `updater/v1`: its `internal` entry point, with
+/// mTLS (the certificates are at [`crate::paths::Paths`]).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApiSettings {
+    pub url: String,
 }
 
 /// The AWS side (decision 0001), as Terraform outputs it.
@@ -94,6 +109,12 @@ impl Config {
         ] {
             if !arn.starts_with(&format!("arn:aws:{service}:")) {
                 return Err(format!("{name} is not an {service} ARN"));
+            }
+        }
+        if let Some(api) = &self.api {
+            let host = api.url.strip_prefix("https://").unwrap_or_default();
+            if host.is_empty() || host.contains(['/', '?', '#', ' ']) {
+                return Err(format!("api.url {:?} is not https://host[:port]", api.url));
             }
         }
         Ok(())
@@ -167,6 +188,21 @@ role_arn = "arn:aws:iam::123456789012:role/quality-data-installation"
         ] {
             let err = Config::parse(&EXAMPLE.replace(from, to)).unwrap_err();
             assert!(err.contains(says), "{from} -> {to}: {err}");
+        }
+    }
+
+    #[test]
+    fn the_api_is_optional_and_only_https() {
+        assert_eq!(Config::parse(EXAMPLE).unwrap().api, None);
+        let with = format!("{EXAMPLE}\n[api]\nurl = \"https://qd.internal:8443\"\n");
+        let api = Config::parse(&with).unwrap().api.unwrap();
+        assert_eq!(api.url, "https://qd.internal:8443");
+        for bad in ["http://qd.internal", "https://", "https://qd/updater/v1"] {
+            let text = format!("{EXAMPLE}\n[api]\nurl = \"{bad}\"\n");
+            assert!(
+                Config::parse(&text).unwrap_err().contains("api.url"),
+                "{bad}"
+            );
         }
     }
 

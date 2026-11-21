@@ -36,3 +36,7 @@ ureq.workspace = true
 [dev-dependencies]
 # To sign test indexes as KMS does (ECDSA P-256, base64 of the DER).
 p256.workspace = true
+# A test CA and certificates, and a local mTLS server, for the `updater/v1`
+# client (ring, as ureq's rustls uses).
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"] }
