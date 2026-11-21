@@ -19,9 +19,10 @@ pub trait ImagePuller {
     fn pull(&self, auth: &RegistryAuth, images: &[String]) -> Result<(), String>;
 }
 
-/// Every image of `offer`, once, after checking each is in the offer's
-/// registry and pinned by digest.
-pub fn pull_all(offer: &Offer, puller: &dyn ImagePuller) -> Result<(), String> {
+/// Every image of `offer` and the images the agent itself runs (`tools`:
+/// the helper image, so a restore never has to pull it), once, after
+/// checking each is in the offer's registry and pinned by digest.
+pub fn pull_all(offer: &Offer, tools: &[String], puller: &dyn ImagePuller) -> Result<(), String> {
     let (host, user, password) = offer
         .registry
         .clone()
@@ -32,21 +33,25 @@ pub fn pull_all(offer: &Offer, puller: &dyn ImagePuller) -> Result<(), String> {
         password,
     };
     let mut images = BTreeSet::new();
-    for (module, m) in &offer.modules {
-        for (name, image) in &m.images {
-            let pinned = image
-                .split_once("@sha256:")
-                .is_some_and(|(_, d)| d.len() == 64 && d.bytes().all(|b| b.is_ascii_hexdigit()));
-            let ours = image
-                .strip_prefix(&auth.host)
-                .is_some_and(|rest| rest.starts_with('/'));
-            if !pinned || !ours {
-                return Err(format!(
-                    "{module}/{name}: {image} is not pinned in the installation's registry"
-                ));
-            }
-            images.insert(image.clone());
+    let of_modules = offer.modules.iter().flat_map(|(module, m)| {
+        m.images
+            .iter()
+            .map(move |(name, image)| (format!("{module}/{name}"), image))
+    });
+    let of_tools = tools.iter().map(|image| ("the agent".to_string(), image));
+    for (whose, image) in of_modules.chain(of_tools) {
+        let pinned = image
+            .split_once("@sha256:")
+            .is_some_and(|(_, d)| d.len() == 64 && d.bytes().all(|b| b.is_ascii_hexdigit()));
+        let ours = image
+            .strip_prefix(&auth.host)
+            .is_some_and(|rest| rest.starts_with('/'));
+        if !pinned || !ours {
+            return Err(format!(
+                "{whose}: {image} is not pinned in the installation's registry"
+            ));
         }
+        images.insert(image.clone());
     }
     let images: Vec<String> = images.into_iter().collect();
     puller.pull(&auth, &images)

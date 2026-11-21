@@ -11,7 +11,9 @@
 #   systemctl enable --now quality-data-agent
 #   journalctl -u quality-data-agent -f
 #
-# It runs as root: it drives Docker, writes /opt/quality-data and
+# It runs as root, and stays root (decision 0003): it drives Docker, and
+# a user in the `docker` group can do anything root can, so a dedicated
+# user would protect nothing; it also writes /opt/quality-data and
 # /var/lib/quality-data and reads the enrolment key. An update interrupted
 # by a stop or a crash goes on from its state file at the next start.
 #

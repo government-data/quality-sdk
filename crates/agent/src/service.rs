@@ -41,7 +41,7 @@ pub fn assemble(paths: &Paths) -> Result<AgentHost, String> {
     let adapters = Adapters {
         cloud: Box::new(AwsCloud::from_config(&config, paths)?),
         compose: Box::new(DockerCompose::new(paths)),
-        database: Box::new(Postgres::new(paths)),
+        database: Box::new(Postgres::new(paths, &config.helper_image())),
         packages: Box::new(PackageFiles::new(paths)),
         api: Box::new(UpdaterApi::from_settings(api, paths)?),
         clock: Box::new(SystemClock),

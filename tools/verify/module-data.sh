@@ -23,27 +23,33 @@
 #      container: the files the archive has are its own again, and a file
 #      it does not have is kept.
 #   5. A stopped container's volume is emptied by a throwaway container of
-#      its own image with its mounts (`docker run --rm --volumes-from <id>
-#      --user 0:0 --network none --entrypoint find <image> <path> -mindepth
-#      1 -delete`): its named volume and its anonymous one are the
+#      the agent's helper image (busybox by digest, not the module's image)
+#      with its mounts (`docker run --rm --volumes-from <id> --user 0:0
+#      --network none --entrypoint find <helper> <path> -mindepth 1
+#      -delete`): its named volume and its anonymous one are the
 #      container's own (`docker inspect` lists both mounts), files of
 #      another owner go too, and the mount point stays. Then `cp - app:/`
 #      leaves the archive's files only: the restore the agent does.
 #
 # The project's containers, network and volume are removed on exit, also on
-# failure. Run alone: no build at the same time (AGENTS.md).
+# failure. Run alone, under the machine lock: no build at the same time
+# (AGENTS.md).
 #
 #   tools/verify/module-data.sh
 #
 # Environment:
 #   QD_IMAGE   a local image to run, by tag (default alpine:3); it must have a
 #              registry digest (pulled, not built here)
+#   QD_HELPER  the helper image, by digest (default busybox 1.37.0 from Docker
+#              Hub, the digest the agent pins and ECR mirrors); pulled if it
+#              is not local
 #
 # Needs: docker with the compose plugin, tar, coreutils `timeout`.
 
 set -euo pipefail
 
 TAG="${QD_IMAGE:-alpine:3}"
+HELPER="${QD_HELPER:-docker.io/library/busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec}"
 PROJECT="qs-verify-data-$(date -u +%Y%m%dt%H%M%Sz)-$RANDOM"
 WORK="$(mktemp -d)"
 MODULE="$WORK/opt/quality-data/qs-verify"
@@ -91,6 +97,9 @@ docker compose version >/dev/null || die "docker compose is not installed"
 command -v timeout >/dev/null || die "timeout (coreutils) is not installed"
 IMAGE="$(docker image inspect "$TAG" --format '{{index .RepoDigests 0}}' 2>/dev/null)" ||
   die "$TAG is not a local image with a registry digest (docker pull $TAG)"
+[[ "$HELPER" == *@sha256:* ]] || die "QD_HELPER must be pinned by digest"
+docker image inspect "$HELPER" >/dev/null 2>&1 || docker pull --quiet "$HELPER" >/dev/null ||
+  die "could not pull $HELPER"
 
 mkdir -p "$MODULE/1.0.0"
 cat >"$MODULE/1.0.0/compose.yml" <<'EOF'
@@ -205,11 +214,10 @@ compose exec -T app sh -c 'echo later > /data/c && mkdir -p /data/d && echo x > 
   chown 1234:1234 /data/c /data/d/e && echo s > /scratch/s'
 compose stop app >/dev/null 2>&1
 cid="$(compose ps --all --quiet app)"
-image="$(docker inspect --format '{{.Image}}' "$cid")"
 mounts="$(docker inspect --format '{{range .Mounts}}{{.Destination}} {{end}}' "$cid")"
 empty() { # empty <path>: the agent's command
   docker run --rm --name "$PROJECT-empty" --network none --user 0:0 --volumes-from "$cid" \
-    --entrypoint find "$image" "$1" -mindepth 1 -delete
+    --entrypoint find "$HELPER" "$1" -mindepth 1 -delete
 }
 left() { # left <path>: what the stopped container's volume holds
   compose cp "app:$1" - 2>/dev/null | tar -t 2>/dev/null | tr '\n' ' '
@@ -219,7 +227,7 @@ if [[ " $mounts" == *" /data "* && " $mounts" == *" /scratch "* ]] &&
   data_left="$(left /data)"
   scratch_left="$(left /scratch)"
   if [[ "$data_left" == "data/ " && "$scratch_left" == "scratch/ " ]]; then
-    record PASS "docker run --volumes-from empties a stopped container's named and anonymous volumes" \
+    record PASS "the helper image with --volumes-from empties a stopped container's named and anonymous volumes" \
       "files of uid 1234 too; the mount points stay"
   else
     record FAIL "docker run --volumes-from empties the volumes" "left: $data_left| $scratch_left"
@@ -248,6 +256,7 @@ cat <<EOF
 date: $(date -u +%Y-%m-%d)
 $(docker version --format 'docker {{.Server.Version}}'); $(docker compose version); $(timeout --version | head -1)
 image: $IMAGE
+helper: $HELPER
 $(printf '%s\n' "${RESULTS[@]}")
 result: $( ((FAILED)) && echo FAIL || echo PASS)
 ---------------------------------------------------------

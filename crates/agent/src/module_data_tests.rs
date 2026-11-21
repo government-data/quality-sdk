@@ -40,6 +40,9 @@ impl Runner for Rc<Cp> {
     }
 }
 
+/// The agent's helper image.
+const HELPER: &str = "r/quality-data/tools/busybox@sha256:b0b";
+
 /// What `docker inspect` says of the stopped `api` container.
 const INSPECT: &str = r#"[{"Id":"c0ffee","Image":"sha256:1ma6e",
     "Mounts":[{"Type":"volume","Destination":"/var/lib/dolt"}]}]"#;
@@ -80,7 +83,7 @@ fn installed(r: &Path, archive: Vec<u8>) -> (ModuleData, Rc<Cp>) {
         ]),
         ..Cp::default()
     });
-    let mut data = ModuleData::new(&Paths::under(r));
+    let mut data = ModuleData::new(&Paths::under(r), HELPER);
     data.runner = Box::new(cp.clone());
     (data, cp)
 }
@@ -95,7 +98,7 @@ fn backup_dir(r: &Path) -> PathBuf {
 fn without_a_record_or_a_manifest_there_is_nothing_to_back_up() {
     let r = root("none");
     let dir = backup_dir(&r);
-    let data = ModuleData::new(&Paths::under(&r));
+    let data = ModuleData::new(&Paths::under(&r), HELPER);
     assert_eq!(data.back_up_into(&dir, &[]).unwrap(), 0);
     assert_eq!(std::fs::read_to_string(dir.join(LIST)).unwrap(), "[]");
     data.restore(&r).unwrap();
@@ -186,7 +189,7 @@ fn a_restore_puts_back_each_key_and_copies_each_volume_s_archive_in() {
 }
 
 #[test]
-fn a_volume_is_emptied_through_its_container_s_mounts_before_its_archive_goes_in() {
+fn a_volume_is_emptied_by_the_helper_image_through_its_container_s_mounts_first() {
     let r = root("empty");
     let dir = backup_dir(&r);
     let (data, cp) = installed(&r, archive());
@@ -204,7 +207,7 @@ fn a_volume_is_emptied_through_its_container_s_mounts_before_its_archive_goes_in
     assert_eq!(
         lines[2],
         "docker run --rm --network none --user 0:0 --volumes-from c0ffee \
-         --entrypoint find sha256:1ma6e /var/lib/dolt -mindepth 1 -delete"
+         --entrypoint find r/quality-data/tools/busybox@sha256:b0b /var/lib/dolt -mindepth 1 -delete"
     );
     assert!(lines[3].ends_with(".env cp - api:/var/lib"), "{}", lines[3]);
     std::fs::remove_dir_all(r).unwrap();
@@ -226,7 +229,7 @@ fn a_volume_that_cannot_be_emptied_is_not_restored_over() {
         (
             "docker inspect c0ffee",
             Ok("[]".to_string()),
-            "names no image",
+            "names no container",
         ),
         (
             "--entrypoint find",

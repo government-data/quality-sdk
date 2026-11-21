@@ -36,6 +36,10 @@ fn cloud(aws: &FakeAws, name: &str) -> (AwsCloud, Recorder) {
         index,
         packages_dir,
         puller: Box::new(recorder.clone()),
+        tools: vec![format!(
+            "1.dkr.ecr.us-east-1.amazonaws.com/quality-data/tools/busybox@sha256:{}",
+            "c".repeat(64)
+        )],
     };
     (cloud, recorder)
 }
@@ -81,7 +85,8 @@ fn a_newer_version_comes_with_the_registry_and_is_prepared_through_aws() {
     );
 
     c.pull_images(&o).unwrap();
-    assert_eq!(pulled.0.borrow().len(), 2);
+    // The version's two images and the helper image.
+    assert_eq!(pulled.0.borrow().len(), 3);
     cleanup(&c);
 }
 

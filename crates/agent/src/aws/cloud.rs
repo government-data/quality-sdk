@@ -29,6 +29,9 @@ pub struct AwsCloud {
     pub index: IndexReader,
     pub packages_dir: PathBuf,
     pub puller: Box<dyn ImagePuller>,
+    /// The images the agent itself runs, pulled with every version's: the
+    /// helper image that empties a volume before a restore.
+    pub tools: Vec<String>,
 }
 
 impl std::fmt::Debug for AwsCloud {
@@ -72,6 +75,7 @@ impl AwsCloud {
             },
             packages_dir: paths.packages_dir(),
             puller: Box::new(Docker::default()),
+            tools: vec![config.helper_image()],
         })
     }
 }
@@ -110,7 +114,7 @@ impl Cloud for AwsCloud {
     }
 
     fn pull_images(&self, o: &Offer) -> Result<(), String> {
-        pull_all(o, self.puller.as_ref())
+        pull_all(o, &self.tools, self.puller.as_ref())
     }
 }
 

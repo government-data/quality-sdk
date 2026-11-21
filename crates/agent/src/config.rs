@@ -3,6 +3,10 @@
 //! ```toml
 //! installation = "inst-0001"   # the enrolment certificate's CN
 //! channel = "stable"           # or "patch"
+//! # optional: the image that empties a module's volume before a restore;
+//! # default: busybox mirrored in the installation's registry,
+//! # <account>.dkr.ecr.<region>.amazonaws.com/quality-data/tools/busybox@sha256:...
+//! helper_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/quality-data/tools/busybox@sha256:..."
 //!
 //! [aws]
 //! region = "us-east-1"
@@ -30,6 +34,14 @@ use serde::Deserialize;
 /// Where `aws_signing_helper` is looked for when the file does not say.
 pub const SIGNING_HELPER: &str = "/usr/local/bin/aws_signing_helper";
 
+/// The helper image's repository in the installation's registry, when the
+/// file does not name one (Terraform's `tool_images`).
+pub const HELPER_REPOSITORY: &str = "quality-data/tools/busybox";
+/// The helper image's digest: busybox 1.37.0's index, mirrored as it is
+/// (`tools/mirror-image.sh`).
+pub const HELPER_DIGEST: &str =
+    "sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec";
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -37,6 +49,11 @@ pub struct Config {
     /// prefix it reports under (`reports/<id>/`).
     pub installation: String,
     pub channel: Channel,
+    /// The image the agent runs to empty a module's volume before its
+    /// backup is restored (`<repo>@sha256:<digest>`); see
+    /// [`Config::helper_image`].
+    #[serde(default)]
+    pub helper_image: Option<String>,
     pub aws: Aws,
     /// quality-data's `updater/v1`; without it the agent tells the API
     /// nothing (commands such as `check` do not need it).
@@ -120,6 +137,9 @@ impl Config {
                 return Err(format!("{name} is not an {service} ARN"));
             }
         }
+        if let Some(image) = &self.helper_image {
+            check_pinned(image).map_err(|why| format!("helper_image {image:?}: {why}"))?;
+        }
         if let Some(api) = &self.api {
             let rest = api.url.strip_prefix("https://").unwrap_or_default();
             let host = rest.split('/').next().unwrap_or_default();
@@ -132,6 +152,41 @@ impl Config {
             }
         }
         Ok(())
+    }
+}
+
+impl Config {
+    /// The helper image: the file's, or busybox mirrored in the
+    /// installation's registry (the account of `aws.role_arn`, in
+    /// `aws.region`), pinned by [`HELPER_DIGEST`].
+    pub fn helper_image(&self) -> String {
+        if let Some(image) = &self.helper_image {
+            return image.clone();
+        }
+        let account = self.aws.role_arn.split(':').nth(4).unwrap_or_default();
+        format!(
+            "{account}.dkr.ecr.{}.amazonaws.com/{HELPER_REPOSITORY}@{HELPER_DIGEST}",
+            self.aws.region
+        )
+    }
+}
+
+/// An image pinned by digest: `<repo>@sha256:<64 hex>`, the repository of
+/// letters, digits, `.`, `_`, `-`, `/` and `:` (a port).
+pub fn check_pinned(image: &str) -> Result<(), String> {
+    let Some((repo, digest)) = image.split_once("@sha256:") else {
+        return Err("not pinned by digest (<repo>@sha256:<digest>)".into());
+    };
+    let hex = digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit());
+    let repo_ok = !repo.is_empty()
+        && repo.starts_with(|c: char| c.is_ascii_alphanumeric())
+        && repo
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':'));
+    if hex && repo_ok {
+        Ok(())
+    } else {
+        Err("not <repo>@sha256:<64 hexadecimal digits>".into())
     }
 }
 
@@ -243,6 +298,29 @@ role_arn = "arn:aws:iam::123456789012:role/quality-data-installation"
                 Config::parse(&text).unwrap_err().contains("connect"),
                 "{bad}"
             );
+        }
+    }
+
+    #[test]
+    fn the_helper_image_defaults_to_busybox_in_the_installation_s_registry() {
+        assert_eq!(
+            Config::parse(EXAMPLE).unwrap().helper_image(),
+            format!(
+                "123456789012.dkr.ecr.us-east-1.amazonaws.com/quality-data/tools/busybox@{HELPER_DIGEST}"
+            )
+        );
+        let own = format!("r.example:5000/tools/bb@sha256:{}", "b".repeat(64));
+        let text = EXAMPLE.replace("[aws]", &format!("helper_image = \"{own}\"\n[aws]"));
+        assert_eq!(Config::parse(&text).unwrap().helper_image(), own);
+        for bad in [
+            "busybox:1.37.0".to_string(),
+            format!("busybox@sha256:{}", "b".repeat(63)),
+            format!("-x/busybox@sha256:{}", "b".repeat(64)),
+            format!("bad repo@sha256:{}", "b".repeat(64)),
+        ] {
+            let text = EXAMPLE.replace("[aws]", &format!("helper_image = \"{bad}\"\n[aws]"));
+            let err = Config::parse(&text).unwrap_err();
+            assert!(err.contains("helper_image"), "{bad}: {err}");
         }
     }
 
