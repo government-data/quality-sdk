@@ -6,6 +6,7 @@
 //! Installations pull: the agent opens no port; it reads the signed index
 //! and pulls what a version names.
 
+pub mod api;
 pub mod aws;
 pub mod check;
 pub mod config;
