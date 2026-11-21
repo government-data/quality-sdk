@@ -1,60 +1,23 @@
 //! Signing an installation's request with a test CA made here: nothing
 //! comes from a real CA.
 
-use std::path::{Path, PathBuf};
+mod common;
+
 use std::time::Duration;
 
 use agent::paths::Paths;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{DerSignature, Signature, SigningKey, VerifyingKey};
 use p256::pkcs8::{DecodePublicKey, EncodePrivateKey, LineEnding};
-use x509_cert::builder::{Builder, CertificateBuilder, Profile, RequestBuilder};
+use x509_cert::builder::{Builder, RequestBuilder};
 use x509_cert::certificate::Certificate;
 use x509_cert::der::oid::db::rfc5280;
 use x509_cert::der::{DecodePem, Encode, EncodePem};
 use x509_cert::ext::pkix::{BasicConstraints, ExtendedKeyUsage};
-use x509_cert::name::Name;
-use x509_cert::serial_number::SerialNumber;
-use x509_cert::time::Validity;
 
+use common::{ca, dir, name, test_ca};
 use sdk_cli::pki::{public_key_info, subject_values, Ca};
 use sdk_cli::{enrol, sign};
-
-fn dir(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("sdk-cli-sign-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
-fn name(s: &str) -> Name {
-    s.parse().unwrap()
-}
-
-/// A self-signed test CA valid for `days`, written as PEM under `dir`.
-fn test_ca(dir: &Path, days: u64) -> (PathBuf, PathBuf) {
-    let key = SigningKey::from_bytes(&[3; 32].into()).unwrap();
-    let cert = CertificateBuilder::new(
-        Profile::Root,
-        SerialNumber::from(1u32),
-        Validity::from_now(Duration::from_secs(days * 86_400)).unwrap(),
-        name("CN=test installations CA,O=quality-data test"),
-        public_key_info(key.verifying_key()).unwrap(),
-        &key,
-    )
-    .unwrap()
-    .build::<DerSignature>()
-    .unwrap();
-    let (c, k) = (dir.join("ca.pem"), dir.join("ca.key"));
-    std::fs::write(&c, cert.to_pem(LineEnding::LF).unwrap()).unwrap();
-    std::fs::write(&k, key.to_pkcs8_pem(LineEnding::LF).unwrap().as_bytes()).unwrap();
-    (c, k)
-}
-
-fn ca(dir: &Path) -> Ca {
-    let (c, k) = test_ca(dir, 3650);
-    Ca::load(&c, &k).unwrap()
-}
 
 #[test]
 fn a_signed_enrolment_names_the_installation_and_is_the_cas() {
@@ -165,7 +128,7 @@ fn a_ca_key_that_is_not_its_certificates_or_a_validity_past_the_ca_is_refused() 
         .unwrap_err()
         .contains("not the CA certificate's key"));
 
-    let ca = Ca::load(&cert, &d.join("ca.key")).unwrap();
+    let ca = Ca::load(&cert, &d.join("ca-3.key")).unwrap();
     let pem = request("CN=inst-0001,OU=installation", &key);
     assert!(sign::sign(&ca, &pem, 11)
         .unwrap_err()
