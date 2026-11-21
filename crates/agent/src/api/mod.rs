@@ -42,7 +42,8 @@ impl std::fmt::Debug for UpdaterApi {
 }
 
 impl UpdaterApi {
-    /// `base`: quality-data's internal entry point (`https://host:port`).
+    /// `base`: quality-data's internal entry point (`https://host:port`,
+    /// with the path its API is served under, `/api` behind Traefik).
     pub fn new(base: &str, transport: Box<dyn Transport>) -> Self {
         Self {
             base: base.trim_end_matches('/').to_string(),
@@ -60,6 +61,7 @@ impl UpdaterApi {
             &paths.internal_ca(),
             &paths.internal_certificate(),
             &paths.internal_private_key(),
+            settings.connect,
         )?;
         Ok(Self::new(&settings.url, Box::new(transport)))
     }

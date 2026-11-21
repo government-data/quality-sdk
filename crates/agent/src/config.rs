@@ -13,12 +13,15 @@
 //! signing_helper = "/usr/local/bin/aws_signing_helper"   # optional
 //!
 //! [api]                        # optional: quality-data's `updater/v1`
-//! url = "https://quality-data.internal:8443"   # its `internal` entry point
+//! url = "https://quality-data.internal:9443/api"   # its `internal` entry point
+//! connect = "127.0.0.1:9443"   # optional: where to connect; the URL's host
+//!                              # stays the TLS name and the Host header
 //! ```
 //!
 //! It holds no secret: the credentials come from the enrolment certificate,
 //! whose key lives beside it ([`crate::paths::Paths`]).
 
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use index_model::Channel;
@@ -46,7 +49,13 @@ pub struct Config {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApiSettings {
+    /// `https://host[:port][/path]`: the entry point and the path the API
+    /// is served under (`/api` behind Traefik).
     pub url: String,
+    /// Where to connect instead of resolving the URL's host (an IP address
+    /// and a port): the host's own Traefik for `INTERNAL_DOMAIN`.
+    #[serde(default)]
+    pub connect: Option<SocketAddr>,
 }
 
 /// The AWS side (decision 0001), as Terraform outputs it.
@@ -112,9 +121,14 @@ impl Config {
             }
         }
         if let Some(api) = &self.api {
-            let host = api.url.strip_prefix("https://").unwrap_or_default();
-            if host.is_empty() || host.contains(['/', '?', '#', ' ']) {
-                return Err(format!("api.url {:?} is not https://host[:port]", api.url));
+            let rest = api.url.strip_prefix("https://").unwrap_or_default();
+            let host = rest.split('/').next().unwrap_or_default();
+            let bad = |c: char| c.is_whitespace() || matches!(c, '?' | '#' | '@' | '\\');
+            if host.is_empty() || rest.contains(bad) {
+                return Err(format!(
+                    "api.url {:?} is not https://host[:port][/path]",
+                    api.url
+                ));
             }
         }
         Ok(())
@@ -197,10 +211,36 @@ role_arn = "arn:aws:iam::123456789012:role/quality-data-installation"
         let with = format!("{EXAMPLE}\n[api]\nurl = \"https://qd.internal:8443\"\n");
         let api = Config::parse(&with).unwrap().api.unwrap();
         assert_eq!(api.url, "https://qd.internal:8443");
-        for bad in ["http://qd.internal", "https://", "https://qd/updater/v1"] {
+        for bad in [
+            "http://qd.internal",
+            "https://",
+            "https:///api",
+            "https://qd/api?x=1",
+            "https://user@qd/api",
+            "https://qd/a b",
+        ] {
             let text = format!("{EXAMPLE}\n[api]\nurl = \"{bad}\"\n");
             assert!(
                 Config::parse(&text).unwrap_err().contains("api.url"),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_api_url_may_carry_a_path_and_a_place_to_connect() {
+        let with = format!(
+            "{EXAMPLE}\n[api]\nurl = \"https://qd.internal:9443/api\"\nconnect = \"127.0.0.1:9443\"\n"
+        );
+        let api = Config::parse(&with).unwrap().api.unwrap();
+        assert_eq!(api.url, "https://qd.internal:9443/api");
+        assert_eq!(api.connect, Some("127.0.0.1:9443".parse().unwrap()));
+        let v6 = with.replace("127.0.0.1:9443", "[::1]:9443");
+        assert!(Config::parse(&v6).unwrap().api.unwrap().connect.is_some());
+        for bad in ["qd.internal:9443", "127.0.0.1", "127.0.0.1:x"] {
+            let text = with.replace("127.0.0.1:9443", bad);
+            assert!(
+                Config::parse(&text).unwrap_err().contains("connect"),
                 "{bad}"
             );
         }
