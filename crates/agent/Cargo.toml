@@ -19,6 +19,7 @@ path = "src/main.rs"
 # engine with the real host, made of one adapter per concern (AWS, Docker
 # Compose, PostgreSQL, the package files, quality-data's API).
 [dependencies]
+base64.workspace = true
 chrono.workspace = true
 hex.workspace = true
 hmac.workspace = true
@@ -34,5 +35,4 @@ ureq.workspace = true
 
 [dev-dependencies]
 # To sign test indexes as KMS does (ECDSA P-256, base64 of the DER).
-base64.workspace = true
 p256.workspace = true
