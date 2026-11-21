@@ -1,0 +1,22 @@
+[package]
+name = "module-manifest"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# A module's manifest, `module.yaml` (decision 0002): its model, its
+# validation, and the checks on capabilities between installed modules.
+# Pure: it reads text and answers values; reading the file is the agent's.
+[dependencies]
+semver.workspace = true
+serde.workspace = true
+serde-saphyr.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
