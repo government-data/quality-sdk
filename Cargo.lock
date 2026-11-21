@@ -636,9 +636,13 @@ dependencies = [
  "agent",
  "aws-client",
  "hex",
+ "index-model",
  "p256",
  "rand_core",
+ "semver",
+ "serde",
  "sha2",
+ "toml",
  "x509-cert",
 ]
 
