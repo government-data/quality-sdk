@@ -269,3 +269,6 @@ pub fn advance(host: &dyn Host, s: &mut State, who: Who) -> Result<(), String> {
     }
     Err("the update did not advance after 20 steps".into())
 }
+
+#[cfg(test)]
+mod tests;
