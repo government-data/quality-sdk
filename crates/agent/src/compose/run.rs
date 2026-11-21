@@ -74,6 +74,12 @@ impl crate::host::Compose for DockerCompose {
         DockerCompose::installed(self)
     }
 
+    /// From the module's `module.yaml`, where its package was put.
+    fn drain_path(&self, module: &str) -> Result<Option<String>, String> {
+        let m = crate::manifests::read(&self.install, module)?;
+        Ok(m.and_then(|m| m.drain).map(|d| d.path))
+    }
+
     /// Every module's health: its containers' Compose healthchecks, the
     /// floor, then what its manifest's `health` adds.
     fn modules_healthy(&self) -> Result<(), String> {

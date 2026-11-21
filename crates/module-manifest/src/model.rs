@@ -122,10 +122,11 @@ pub struct ConsumerHold {
     pub path: String,
 }
 
-/// An HTTP endpoint the module serves on its internal service inside the
-/// Compose network. The core calls it with `?horizon_secs=N` and it
-/// answers `{"running": <n>, "scheduled_soon": <n>}`; the core sums the
-/// answers of every installed module (decision 0002).
+/// An HTTP endpoint the module serves on its route of the `internal`
+/// entry point (Traefik, mTLS: the core calls it with its machine
+/// certificate). The core calls it with `?horizon_secs=N` and it answers
+/// `{"running": <n>, "scheduled_soon": <n>}`; the core sums the answers of
+/// every installed module, whose paths the agent tells it (decision 0002).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Drain {

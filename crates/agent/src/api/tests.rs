@@ -165,10 +165,12 @@ fn the_installed_modules_are_put_whole() {
         InstalledModule {
             name: "orchestrator".into(),
             version: "2.0.1".into(),
+            drain_path: Some("/internal/drain".into()),
         },
         InstalledModule {
             name: "quality-data".into(),
             version: "1.4.0".into(),
+            drain_path: None,
         },
     ];
     api(&base).put_modules(&modules).unwrap();
@@ -181,8 +183,8 @@ fn the_installed_modules_are_put_whole() {
     assert_eq!(
         body,
         json!({"modules": [
-            {"name": "orchestrator", "version": "2.0.1"},
-            {"name": "quality-data", "version": "1.4.0"},
+            {"name": "orchestrator", "version": "2.0.1", "drain_path": "/internal/drain"},
+            {"name": "quality-data", "version": "1.4.0", "drain_path": null},
         ]})
     );
     let (base, _) = server(&[("PUT /updater/v1/modules", 400, r#"{"error":"bad module"}"#)]);

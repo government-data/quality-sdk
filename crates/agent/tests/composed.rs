@@ -114,6 +114,9 @@ impl Compose for FakeCompose {
         }
         Ok(())
     }
+    fn drain_path(&self, module: &str) -> Result<Option<String>, String> {
+        Ok((module == "quality-data").then(|| "/internal/drain".into()))
+    }
 }
 
 struct FakeDatabase(Rc<World>);
@@ -183,7 +186,10 @@ impl Api for FakeApi {
         }
         let names: Vec<String> = modules
             .iter()
-            .map(|m| format!("{}@{}", m.name, m.version))
+            .map(|m| {
+                let drain = m.drain_path.as_deref().unwrap_or("-");
+                format!("{}@{}{drain}", m.name, m.version)
+            })
             .collect();
         self.0.note(format!("api:modules:{}", names.join(",")));
         Ok(())
@@ -245,7 +251,7 @@ fn an_update_runs_through_every_adapter_and_its_state_is_on_disk() {
         "packages:put:quality-data:/packages/quality-data-1.3.0.tar.gz",
         "compose:put:1.3.0:quality-data",
         "compose:start",
-        "api:modules:quality-data@1.3.0",
+        "api:modules:quality-data@1.3.0/internal/drain",
         "compose:healthy",
         "packages:commands",
         "api:maintenance:false",
@@ -284,7 +290,10 @@ fn quality_data_is_told_the_installed_modules_at_start_after_going_back_and_unti
     let (world, host, root) = host("modules");
     host.tell_modules_if_untold();
     host.tell_modules_if_untold();
-    assert_eq!(world.count("api:modules:quality-data@1.2.0"), 1);
+    assert_eq!(
+        world.count("api:modules:quality-data@1.2.0/internal/drain"),
+        1
+    );
     // A version that does not answer goes back: told after each start.
     *world.answers.borrow_mut() = Some("1.2.0".into());
     let mut s = State::new("1.2.0");
@@ -297,9 +306,9 @@ fn quality_data_is_told_the_installed_modules_at_start_after_going_back_and_unti
     assert_eq!(
         told,
         [
-            "api:modules:quality-data@1.2.0",
-            "api:modules:quality-data@1.3.0",
-            "api:modules:quality-data@1.2.0",
+            "api:modules:quality-data@1.2.0/internal/drain",
+            "api:modules:quality-data@1.3.0/internal/drain",
+            "api:modules:quality-data@1.2.0/internal/drain",
         ]
     );
     // Not heard: told again before the next round, until it is.
@@ -309,7 +318,10 @@ fn quality_data_is_told_the_installed_modules_at_start_after_going_back_and_unti
     world.calls.borrow_mut().clear();
     host.tell_modules_if_untold();
     host.tell_modules_if_untold();
-    assert_eq!(world.count("api:modules:quality-data@1.2.0"), 1);
+    assert_eq!(
+        world.count("api:modules:quality-data@1.2.0/internal/drain"),
+        1
+    );
     std::fs::remove_dir_all(root).unwrap();
 }
 

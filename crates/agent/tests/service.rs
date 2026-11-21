@@ -120,6 +120,9 @@ impl Compose for Fakes {
     fn modules_healthy(&self) -> Result<(), String> {
         Ok(())
     }
+    fn drain_path(&self, _module: &str) -> Result<Option<String>, String> {
+        Ok(None)
+    }
 }
 
 impl Database for Fakes {

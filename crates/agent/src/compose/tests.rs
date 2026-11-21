@@ -290,3 +290,25 @@ fn a_manifest_s_health_adds_its_services_and_its_checks_to_the_floor() {
     assert!(err.unwrap_err().contains("names the module \"other\""));
     std::fs::remove_dir_all(r).unwrap();
 }
+
+#[test]
+fn a_module_s_drain_path_is_read_from_its_manifest() {
+    use crate::host::Compose;
+    let r = root("drain-path");
+    let c = compose(&r, Fake::default());
+    let current = r.join("opt/quality-data/orchestrator/current");
+    std::fs::create_dir_all(&current).unwrap();
+    assert_eq!(c.drain_path("orchestrator").unwrap(), None);
+    let yaml = |drain: &str| format!("name: orchestrator\nversion: 2.0.0\n{drain}");
+    std::fs::write(current.join("module.yaml"), yaml("")).unwrap();
+    assert_eq!(c.drain_path("orchestrator").unwrap(), None);
+    let drain = "drain: { path: /internal/drain }\n";
+    std::fs::write(current.join("module.yaml"), yaml(drain)).unwrap();
+    assert_eq!(
+        c.drain_path("orchestrator").unwrap().as_deref(),
+        Some("/internal/drain")
+    );
+    std::fs::write(current.join("module.yaml"), "name: other\nversion: 2.0.0\n").unwrap();
+    assert!(c.drain_path("orchestrator").is_err());
+    std::fs::remove_dir_all(r).unwrap();
+}
