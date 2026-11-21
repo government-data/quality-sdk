@@ -23,6 +23,7 @@ use updater::state::State;
 use crate::host::Api;
 
 pub mod internal_files;
+pub mod renew;
 pub mod tls;
 
 /// The protocol's prefix.

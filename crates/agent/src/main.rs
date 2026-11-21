@@ -113,9 +113,10 @@ fn run(paths: &Paths, every: Duration, once: bool) -> ExitCode {
         .init();
     let started = agent::service::lock(paths).and_then(|lock| {
         let host = agent::service::assemble(paths)?;
-        Ok((lock, host))
+        let renewer = agent::service::renewer(paths)?;
+        Ok((lock, host, renewer))
     });
-    let (_lock, host) = match started {
+    let (_lock, host, renewer) = match started {
         Ok(started) => started,
         Err(err) => {
             eprintln!("error: {err}");
@@ -128,6 +129,7 @@ fn run(paths: &Paths, every: Duration, once: bool) -> ExitCode {
         "quality-data-agent runs"
     );
     let rounds = once.then_some(1);
-    agent::service::run(&host, &paths.state_file(), every, rounds);
+    let mut renew = || agent::service::renew(&renewer, chrono::Utc::now());
+    agent::service::run_with(&host, &paths.state_file(), every, rounds, &mut renew);
     ExitCode::SUCCESS
 }
