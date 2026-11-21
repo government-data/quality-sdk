@@ -15,7 +15,8 @@ installation opens no inbound port for this.
 > the update engine (`crates/updater`), the agent (`crates/agent`) with its
 > AWS adapter, and the `quality-sdk` CLI (`crates/sdk-cli`: `enrol`,
 > `sign-enrolment`, `revoke`, `publish`); `quality-data-agent check` checks the
-> AWS side end to end (`tools/verify/agent-aws.sh`). The agent's other adapters
+> AWS side end to end (`tools/verify/agent-aws.sh`, and with the CLI,
+> `tools/verify/publish-aws.sh`). The agent's other adapters
 > (quality-data's API, Docker Compose, PostgreSQL, the package files), the
 > module manifests and the integration between modules shown below are
 > **planned**.
