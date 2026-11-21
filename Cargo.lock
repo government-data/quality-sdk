@@ -32,6 +32,7 @@ dependencies = [
  "tracing-subscriber",
  "updater",
  "ureq",
+ "x509-cert",
 ]
 
 [[package]]
