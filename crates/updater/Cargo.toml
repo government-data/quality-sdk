@@ -1,0 +1,23 @@
+[package]
+name = "updater"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# The update engine (decision 0001): an installation's update as a state
+# machine that survives a crash, behind the `Host` trait. Synchronous: it does
+# one thing at a time. Where versions come from, Docker Compose, PostgreSQL
+# and the files are the host's adapters, outside this crate.
+[dependencies]
+chrono.workspace = true
+chrono-tz.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
