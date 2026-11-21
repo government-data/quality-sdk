@@ -23,6 +23,7 @@ chrono.workspace = true
 hex.workspace = true
 hmac.workspace = true
 index-model.workspace = true
+semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -30,3 +31,8 @@ toml.workspace = true
 tracing.workspace = true
 updater.workspace = true
 ureq.workspace = true
+
+[dev-dependencies]
+# To sign test indexes as KMS does (ECDSA P-256, base64 of the DER).
+base64.workspace = true
+p256.workspace = true
