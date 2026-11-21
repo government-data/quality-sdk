@@ -9,6 +9,7 @@ dependencies = [
  "chrono",
  "index-model",
  "serde",
+ "serde_json",
  "toml",
  "tracing",
  "updater",
