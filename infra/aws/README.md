@@ -26,6 +26,17 @@ AWS_PROFILE=orquestador terraform apply core.plan
 The state is local until the remote one exists (decision 0001, Open); it holds
 no secret, but keep a copy.
 
+## Verify Roles Anywhere (a person, after applying)
+
+```bash
+QD_CA_CERT=~/qd-ca/ca.pem QD_CA_KEY=~/qd-ca/ca.key tools/verify/roles-anywhere.sh
+```
+
+Run from the repository root with the `orquestador` profile signed in. It
+issues test certificates from the CA, checks what the installation role may
+and may not do, revokes one with a CRL, prints PASS or FAIL per check and
+removes everything it created.
+
 ## Revoke an installation
 
 The provider has no CRL resource:
