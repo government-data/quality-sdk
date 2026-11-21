@@ -237,3 +237,56 @@ impl Runner for Shared {
         self.0.run(cmd)
     }
 }
+
+#[test]
+fn a_manifest_s_health_adds_its_services_and_its_checks_to_the_floor() {
+    use crate::host::Compose;
+    let r = root("manifest");
+    let current = r.join("opt/quality-data/quality-data/current");
+    std::fs::create_dir_all(&current).unwrap();
+    std::fs::write(
+        current.join("module.yaml"),
+        "name: quality-data\nversion: 1.3.0\nhealth:\n  services: [api, worker]\n  \
+         checks:\n    - { service: api, command: [quality-data, health], timeout_secs: 20 }\n",
+    )
+    .unwrap();
+    let lake = r#"{"Service":"rustfs","State":"running","Health":""}"#;
+    let api = r#"{"Service":"api","State":"running","Health":"healthy"}"#;
+    let worker = r#"{"Service":"worker","State":"running","Health":""}"#;
+    let healthy = |ps: &str, check: Result<&str, &str>| {
+        let fake = std::rc::Rc::new(
+            Fake::default()
+                .answer("exec -T api quality-data health", check)
+                .answer("--project-name quality-data", Ok(ps))
+                .answer("--project-name lake-rustfs", Ok(lake)),
+        );
+        let mut c = compose(&r, Fake::default());
+        c.runner = Box::new(Shared(fake.clone()));
+        c.put_version("1.3.0", &modules("1.3.0", 'a'), &[]).unwrap();
+        (c.modules_healthy(), fake.lines())
+    };
+    let (ok, ran) = healthy(&format!("{api}\n{worker}"), Ok(""));
+    ok.unwrap();
+    let check = ran.iter().find(|l| l.contains(" exec ")).unwrap();
+    assert!(
+        check.starts_with("timeout --kill-after=5 20 docker compose --project-name quality-data")
+    );
+    assert!(
+        check.ends_with(".env exec -T api quality-data health"),
+        "{check}"
+    );
+    assert!(!ran
+        .iter()
+        .any(|l| l.contains("lake-rustfs") && l.contains(" exec ")));
+    let (err, _) = healthy(api, Ok(""));
+    assert_eq!(err.unwrap_err(), "quality-data/worker has no container");
+    let (err, _) = healthy(&format!("{api}\n{worker}"), Err("exit status: 1"));
+    assert_eq!(
+        err.unwrap_err(),
+        "quality-data/api: the check quality-data failed: exit status: 1"
+    );
+    std::fs::write(current.join("module.yaml"), "name: other\nversion: 1.3.0\n").unwrap();
+    let (err, _) = healthy(&format!("{api}\n{worker}"), Ok(""));
+    assert!(err.unwrap_err().contains("names the module \"other\""));
+    std::fs::remove_dir_all(r).unwrap();
+}

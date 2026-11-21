@@ -1,8 +1,7 @@
 //! The `Compose` trait of the host on [`DockerCompose`]: each module
 //! brought up in its order, waiting for its healthchecks, stopped, and its
-//! health's floor.
+//! health.
 
-use serde::Deserialize;
 use updater::engine::Installed;
 use updater::state::Modules;
 
@@ -17,31 +16,6 @@ impl DockerCompose {
             )
         })
     }
-}
-
-/// One container as `docker compose ps --all --format json` says it.
-#[derive(Debug, Deserialize)]
-struct Container {
-    #[serde(rename = "Service", default)]
-    service: String,
-    #[serde(rename = "State", default)]
-    state: String,
-    #[serde(rename = "Health", default)]
-    health: String,
-}
-
-/// The containers of `ps --format json`: one object per line (as Compose
-/// 2.21 and later print them), or one array (as earlier ones did).
-fn containers(output: &str) -> Result<Vec<Container>, String> {
-    let output = output.trim();
-    if output.starts_with('[') {
-        return serde_json::from_str(output).map_err(|e| format!("docker compose ps: {e}"));
-    }
-    output
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).map_err(|e| format!("docker compose ps: {e}")))
-        .collect()
 }
 
 impl crate::host::Compose for DockerCompose {
@@ -100,27 +74,13 @@ impl crate::host::Compose for DockerCompose {
         DockerCompose::installed(self)
     }
 
-    /// The floor of every module's health: each has containers, every one
-    /// running, and healthy when it has a healthcheck. The manifest's
-    /// `health` is read once the module manifest exists (decision 0002).
+    /// Every module's health: its containers' Compose healthchecks, the
+    /// floor, then what its manifest's `health` adds.
     fn modules_healthy(&self) -> Result<(), String> {
         let r = self.record_or_error()?;
         let mut sick = Vec::new();
         for module in &r.now.order {
-            let all = containers(&self.run(module, &["ps", "--all", "--format", "json"])?)?;
-            if all.is_empty() {
-                sick.push(format!("{module} has no container"));
-            }
-            for c in all {
-                if c.state != "running" || !(c.health.is_empty() || c.health == "healthy") {
-                    let health = if c.health.is_empty() {
-                        String::new()
-                    } else {
-                        format!(", {}", c.health)
-                    };
-                    sick.push(format!("{module}/{} is {}{health}", c.service, c.state));
-                }
-            }
+            sick.extend(self.sick(module)?);
         }
         if sick.is_empty() {
             Ok(())
