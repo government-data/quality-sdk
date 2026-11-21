@@ -22,6 +22,7 @@ use updater::state::State;
 
 use crate::host::Api;
 
+pub mod internal_files;
 pub mod tls;
 
 /// The protocol's prefix.
@@ -57,12 +58,9 @@ impl UpdaterApi {
         settings: &crate::config::ApiSettings,
         paths: &crate::paths::Paths,
     ) -> Result<Self, String> {
-        let transport = tls::https(
-            &paths.internal_ca(),
-            &paths.internal_certificate(),
-            &paths.internal_private_key(),
-            settings.connect,
-        )?;
+        let files = internal_files::InternalFiles::new(paths);
+        files.finish_pending()?;
+        let transport = tls::Internal::new(files, settings.connect)?;
         Ok(Self::new(&settings.url, Box::new(transport)))
     }
 

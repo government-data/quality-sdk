@@ -8,17 +8,24 @@
 //! the URL's host stays the TLS server name (SNI and the name checked in
 //! the server's certificate) and the `Host` header. `/etc/hosts` is never
 //! touched.
+//!
+//! [`Internal`] reads the files again whenever one of them was replaced (a
+//! renewal), so a long-running agent presents its new certificate.
 
 use std::net::SocketAddr;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
+use std::sync::Mutex;
 use std::time::Duration;
 
-use aws_client::http::Https;
+use aws_client::http::{Https, Request, Response, Transport};
 use ureq::config::Config;
 use ureq::http::Uri;
 use ureq::tls::{Certificate, ClientCert, PemItem, PrivateKey, RootCerts, TlsConfig};
 use ureq::unversioned::resolver::{ResolvedSocketAddrs, Resolver};
 use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
+
+use super::internal_files::InternalFiles;
 
 /// The `updater/v1` calls are small: one that takes longer is not answering.
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -33,6 +40,16 @@ pub fn https(
     private_key: &Path,
     connect: Option<SocketAddr>,
 ) -> Result<Https, String> {
+    agent(ca, certificate, private_key, connect).map(Https::with_agent)
+}
+
+/// The ureq agent [`https`] sends through.
+fn agent(
+    ca: &Path,
+    certificate: &Path,
+    private_key: &Path,
+    connect: Option<SocketAddr>,
+) -> Result<ureq::Agent, String> {
     let read = |p: &Path| std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()));
     let pem_error = |p: &Path, e: ureq::Error| format!("{}: {e}", p.display());
     let roots = certificates(&read(ca)?).map_err(|e| pem_error(ca, e))?;
@@ -56,11 +73,74 @@ pub fn https(
         .timeout_connect(Some(Duration::from_secs(5)))
         .timeout_global(Some(TIMEOUT))
         .build();
-    let agent = match connect {
+    Ok(match connect {
         Some(addr) => ureq::Agent::with_parts(config, DefaultConnector::new(), Fixed(addr)),
         None => config.into(),
-    };
-    Ok(Https::with_agent(agent))
+    })
+}
+
+/// What identifies the files' contents: each one's inode, size and time.
+type Stamp = Vec<(u64, u64, i64, i64)>;
+
+fn stamp(files: &InternalFiles) -> Stamp {
+    [&files.ca, &files.certificate, &files.private_key]
+        .iter()
+        .map(|f| match std::fs::metadata(f) {
+            Ok(m) => (m.ino(), m.len(), m.mtime(), m.mtime_nsec()),
+            Err(_) => (0, 0, 0, 0),
+        })
+        .collect()
+}
+
+/// HTTPS to the `internal` entry point with the agent's files as they are
+/// now: read again whenever one was replaced.
+pub struct Internal {
+    files: InternalFiles,
+    connect: Option<SocketAddr>,
+    agent: Mutex<(Stamp, ureq::Agent)>,
+}
+
+impl std::fmt::Debug for Internal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Internal")
+            .field("files", &self.files)
+            .field("connect", &self.connect)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Internal {
+    /// The files are read now: missing or wrong, it is refused at once.
+    pub fn new(files: InternalFiles, connect: Option<SocketAddr>) -> Result<Self, String> {
+        let now = stamp(&files);
+        let agent = agent(&files.ca, &files.certificate, &files.private_key, connect)?;
+        Ok(Self {
+            files,
+            connect,
+            agent: Mutex::new((now, agent)),
+        })
+    }
+
+    /// The agent for the files as they are now; when they do not read, the
+    /// call fails and the next one reads them again.
+    fn current(&self) -> Result<ureq::Agent, String> {
+        let mut held = self.agent.lock().unwrap_or_else(|e| e.into_inner());
+        let now = stamp(&self.files);
+        if now != held.0 {
+            let f = &self.files;
+            *held = (
+                now,
+                agent(&f.ca, &f.certificate, &f.private_key, self.connect)?,
+            );
+        }
+        Ok(held.1.clone())
+    }
+}
+
+impl Transport for Internal {
+    fn send(&self, request: Request) -> Result<Response, String> {
+        Https::with_agent(self.current()?).send(request)
+    }
 }
 
 /// Resolves every host to one address: `[api] connect`.

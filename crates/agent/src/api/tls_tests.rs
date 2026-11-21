@@ -192,3 +192,45 @@ fn with_connect_it_opens_there_and_names_the_url_host() {
     );
     assert!(api.version().unwrap_err().contains("does not answer"));
 }
+
+#[test]
+fn the_internal_transport_reads_replaced_files_again() {
+    use crate::api::internal_files::{Contents, InternalFiles};
+    use crate::api::tls::Internal;
+    let installation = Pki::new("installation CA");
+    let other = Pki::new("other CA");
+    let port = server(&installation, &installation);
+    let (ca, certificate, private_key) = files("reload", &installation, &installation);
+    let f = InternalFiles {
+        ca,
+        certificate,
+        private_key,
+    };
+    let api = UpdaterApi::new(
+        &format!("https://localhost:{port}"),
+        Box::new(Internal::new(f.clone(), None).unwrap()),
+    );
+    assert_eq!(api.version().unwrap(), "1.4.0");
+    // A certificate the server's CA did not issue: refused from now on.
+    let replace = |issuer: &Pki| {
+        let (_, pem, key) = issuer.leaf(&["agent"]);
+        let new = Contents {
+            ca: installation.ca.pem(),
+            certificate: pem,
+            private_key: key.serialize_pem(),
+        };
+        f.replace(&new).unwrap();
+    };
+    replace(&other);
+    assert!(api.version().is_err());
+    replace(&installation);
+    assert_eq!(api.version().unwrap(), "1.4.0");
+    assert!(Internal::new(
+        InternalFiles {
+            ca: "/nonexistent/ca.pem".into(),
+            ..f.clone()
+        },
+        None
+    )
+    .is_err());
+}
