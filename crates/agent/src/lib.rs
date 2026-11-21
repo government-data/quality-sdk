@@ -15,6 +15,7 @@ pub mod config;
 #[cfg(test)]
 mod fake_exec;
 pub mod host;
+pub mod manifests;
 pub mod package_archive;
 pub mod package_files;
 pub mod paths;

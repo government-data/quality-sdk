@@ -18,6 +18,7 @@ dependencies = [
  "flate2",
  "hex",
  "index-model",
+ "module-manifest",
  "p256",
  "rcgen",
  "rustls",

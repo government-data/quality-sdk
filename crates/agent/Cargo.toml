@@ -25,6 +25,7 @@ chrono.workspace = true
 flate2.workspace = true
 hex.workspace = true
 index-model.workspace = true
+module-manifest.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
