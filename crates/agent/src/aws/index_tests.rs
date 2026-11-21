@@ -40,13 +40,20 @@ fn platform(version: &str) -> Value {
     })
 }
 
+/// The modules declare what they provide and require.
+fn with_capabilities(mut v: Value) -> Value {
+    v["modules"]["quality-data"]["provides"] = json!(["core"]);
+    v["modules"]["orchestrator"]["requires"] = json!(["core", "sql-query"]);
+    v
+}
+
 pub(crate) fn index(channel: &str, sequence: u64) -> Vec<u8> {
     let value = json!({
         "format": 1,
         "channel": channel,
         "sequence": sequence,
         "published_at": "2026-11-21T00:00:00Z",
-        "versions": [platform("1.3.0"), platform("1.4.0")],
+        "versions": [platform("1.3.0"), with_capabilities(platform("1.4.0"))],
     });
     serde_json::to_vec_pretty(&value).unwrap()
 }
@@ -96,6 +103,10 @@ fn a_verified_index_offers_its_newest_version_with_every_module() {
         ]
     );
     assert!(o.packages.iter().all(|p| p.sha256 == DIGEST));
+    // What each module provides and requires reaches the engine.
+    assert_eq!(o.packages[0].requires, ["core", "sql-query"]);
+    assert!(o.packages[0].provides.is_empty());
+    assert_eq!(o.packages[1].provides, ["core"]);
     // Its sequence is kept.
     assert_eq!(std::fs::read_to_string(&r.seen).unwrap(), r#"{"stable":7}"#);
     cleanup(&r);

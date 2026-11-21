@@ -91,9 +91,8 @@ pub fn offer(index: &Index, installed: &str, installation: &str) -> Result<Offer
     })
 }
 
-/// A platform version as the engine's offer. The index does not carry
-/// what each module provides and requires yet, so the packages apply in
-/// the order of their names (decision 0003, Open).
+/// A platform version as the engine's offer, with what each module
+/// provides and requires, which orders its packages (decision 0003).
 fn to_offer(v: &PlatformVersion) -> Offer {
     let modules = v
         .modules
@@ -113,8 +112,8 @@ fn to_offer(v: &PlatformVersion) -> Offer {
             module: name.clone(),
             key: m.package.key.clone(),
             sha256: m.package.sha256.clone(),
-            provides: Vec::new(),
-            requires: Vec::new(),
+            provides: m.provides.clone(),
+            requires: m.requires.clone(),
         })
         .collect();
     Offer {
