@@ -10,6 +10,7 @@ pub mod api;
 pub mod aws;
 pub mod check;
 pub mod command;
+pub mod compose;
 pub mod config;
 #[cfg(test)]
 mod fake_exec;
