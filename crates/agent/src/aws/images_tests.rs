@@ -2,7 +2,6 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::os::unix::fs::PermissionsExt;
 
 use updater::state::{Module, Modules};
 
@@ -111,8 +110,7 @@ esac
         log = log.display()
     );
     let docker = dir.join("docker");
-    std::fs::write(&docker, script).unwrap();
-    std::fs::set_permissions(&docker, std::fs::Permissions::from_mode(0o700)).unwrap();
+    crate::fake_exec::write(&docker, &script);
     let scratch = dir.join("scratch");
     std::fs::create_dir_all(&scratch).unwrap();
     (dir, Docker { docker, scratch })
@@ -130,7 +128,10 @@ fn auth() -> RegistryAuth {
 fn docker_logs_in_with_the_password_on_stdin_and_pulls_by_digest() {
     let (dir, docker) = fake_docker("ok", false);
     let image = format!("{HOST}/quality-data/x@sha256:{}", digest('a'));
-    docker.pull(&auth(), std::slice::from_ref(&image)).unwrap();
+    {
+        let _running = crate::fake_exec::running();
+        docker.pull(&auth(), std::slice::from_ref(&image)).unwrap();
+    }
     let log = std::fs::read_to_string(dir.join("log")).unwrap();
     let lines: Vec<_> = log.lines().collect();
     assert!(lines[0].ends_with(&format!("login --username AWS --password-stdin {HOST}")));
@@ -148,7 +149,10 @@ fn docker_logs_in_with_the_password_on_stdin_and_pulls_by_digest() {
 #[test]
 fn a_failed_pull_says_why_and_leaves_no_credential() {
     let (dir, docker) = fake_docker("fail", true);
-    let err = docker.pull(&auth(), &["x@sha256:1".into()]).unwrap_err();
+    let err = {
+        let _running = crate::fake_exec::running();
+        docker.pull(&auth(), &["x@sha256:1".into()]).unwrap_err()
+    };
     assert!(err.contains("manifest unknown"), "{err}");
     assert_eq!(std::fs::read_dir(&docker.scratch).unwrap().count(), 0);
     std::fs::remove_dir_all(dir).unwrap();

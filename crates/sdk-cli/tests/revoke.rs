@@ -134,3 +134,15 @@ fn the_crl_is_imported_the_first_time_and_updated_after() {
     let sent: Vec<_> = aws.sent.borrow().iter().map(|r| r.method.clone()).collect();
     assert_eq!(sent, ["GET", "PATCH", "POST"], "a disabled CRL is enabled");
 }
+
+#[test]
+fn without_crl_the_file_is_beside_the_ca_key() {
+    use std::ffi::OsStr;
+    use std::path::Path;
+    let file = sdk_cli::revoke::default_crl(Some(OsStr::new("/home/officer"))).unwrap();
+    assert_eq!(file, Path::new("/home/officer/qd-ca/installations.crl"));
+    assert!(sdk_cli::revoke::default_crl(None)
+        .unwrap_err()
+        .contains("--crl"));
+    assert!(sdk_cli::revoke::default_crl(Some(OsStr::new(""))).is_err());
+}

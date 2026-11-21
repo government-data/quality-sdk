@@ -37,3 +37,8 @@ output "index_public_key_pem" {
   description = "The index's public key, to pin in the agent."
   value       = data.aws_kms_public_key.index_signing.public_key_pem
 }
+
+output "enrolment_officers_group" {
+  description = "The IAM group whose members may revoke installations (`quality-sdk revoke`)."
+  value       = aws_iam_group.enrolment_officers.name
+}

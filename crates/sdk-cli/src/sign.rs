@@ -72,6 +72,28 @@ fn check_request(pem: &str) -> Result<(String, VerifyingKey), String> {
     Ok((installation.clone(), key))
 }
 
+/// How long an installation's certificate lasts when `--days` is not given
+/// (decision 0001).
+pub const DEFAULT_DAYS: u32 = 365;
+
+/// The days to sign for: `given`, or [`DEFAULT_DAYS`] capped by the whole
+/// days left on the CA's own certificate.
+pub fn days_or_default(ca: &Ca, given: Option<u32>) -> u32 {
+    given.unwrap_or_else(|| {
+        let ca_until = ca
+            .certificate
+            .tbs_certificate
+            .validity
+            .not_after
+            .to_unix_duration();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        let left = ca_until.saturating_sub(now).as_secs() / 86_400;
+        DEFAULT_DAYS.min(u32::try_from(left).unwrap_or(u32::MAX))
+    })
+}
+
 /// Sign `request_pem` with `ca` for `days` days. A validity past the CA's
 /// own is refused.
 pub fn sign(ca: &Ca, request_pem: &str, days: u32) -> Result<Signed, String> {

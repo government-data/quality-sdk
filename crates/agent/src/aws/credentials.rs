@@ -48,16 +48,14 @@ impl CredentialSource for SigningHelper {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt;
-
     use super::*;
+    use crate::fake_exec;
 
     fn helper(name: &str, script: &str) -> (PathBuf, SigningHelper) {
         let dir = std::env::temp_dir().join(format!("agent-helper-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("aws_signing_helper");
-        std::fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        fake_exec::write(&path, &format!("#!/bin/sh\n{script}\n"));
         let h = SigningHelper {
             helper: path,
             certificate: "/etc/quality-data/enrolment/certificate.pem".into(),
@@ -79,7 +77,10 @@ mod tests {
   && [ "$7" = arn:aws:rolesanywhere:us-east-1:1:trust-anchor/t ] && [ "${13}" = us-east-1 ] || exit 3
 echo '{"Version":1,"AccessKeyId":"ASIAX","SecretAccessKey":"s","SessionToken":"t","Expiration":"2026-11-21T12:00:00Z"}'"#,
         );
-        let c = h.credentials().unwrap();
+        let c = {
+            let _running = fake_exec::running();
+            h.credentials().unwrap()
+        };
         assert_eq!(c.access_key_id, "ASIAX");
         assert_eq!(c.session_token.as_deref(), Some("t"));
         assert_eq!(
@@ -96,13 +97,17 @@ echo '{"Version":1,"AccessKeyId":"ASIAX","SecretAccessKey":"s","SessionToken":"t
             "refused",
             "echo secret-output; echo 'AccessDeniedException: revoked' >&2; exit 1",
         );
+        let (dir2, mut garbage) = helper("garbage", "echo not-json");
+        let _running = fake_exec::running();
         let err = h.credentials().unwrap_err();
         assert!(err.contains("AccessDeniedException: revoked"), "{err}");
         assert!(!err.contains("secret-output"), "{err}");
-        let (dir2, mut h) = helper("garbage", "echo not-json");
-        assert!(h.credentials().unwrap_err().contains("no credentials"));
-        h.helper = dir2.join("missing");
-        assert!(h.credentials().unwrap_err().contains("could not run"));
+        assert!(garbage
+            .credentials()
+            .unwrap_err()
+            .contains("no credentials"));
+        garbage.helper = dir2.join("missing");
+        assert!(garbage.credentials().unwrap_err().contains("could not run"));
         std::fs::remove_dir_all(dir).unwrap();
         std::fs::remove_dir_all(dir2).unwrap();
     }

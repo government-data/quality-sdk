@@ -39,12 +39,16 @@ removes everything it created.
 
 ## Revoke an installation
 
-The provider has no CRL resource:
-
 ```bash
-aws rolesanywhere import-crl --name quality-data-revoked --enabled \
-  --trust-anchor-arn "$(terraform output -raw trust_anchor_arn)" \
-  --crl-data fileb://revoked.crl
+quality-sdk revoke --ca-cert ~/qd-ca/ca.pem --ca-key ~/qd-ca/ca.key \
+  --trust-anchor-arn "$(terraform -chdir=infra/aws output -raw trust_anchor_arn)" \
+  --certificate installation.pem
 ```
 
-`quality-sdk revoke` will do this (decision 0001, step 6).
+The CRL file is the list of every revoked serial. It lives beside the CA key,
+`~/qd-ca/installations.crl` by default (`--crl` to choose another), and is
+backed up with the key: losing it means a new CRL without the earlier serials.
+The person revoking needs the four CRL actions of the
+`quality-data-enrolment-officers` group (`rolesanywhere:ListCrls`, `ImportCrl`,
+`UpdateCrl`, `EnableCrl`): Terraform creates the group, not its members; a
+person adds the people who revoke to it.
