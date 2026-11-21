@@ -57,6 +57,12 @@ impl Paths {
         self.config.join("enrolment/private-key.pem")
     }
 
+    /// The enrolment's certificate request, which `quality-sdk enrol`
+    /// writes for the CA's holder to sign.
+    pub fn certificate_request(&self) -> PathBuf {
+        self.config.join("enrolment/request.csr")
+    }
+
     /// The index's public key, pinned at enrolment.
     pub fn index_key(&self) -> PathBuf {
         self.config.join("index-key.pem")

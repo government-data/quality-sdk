@@ -68,13 +68,7 @@ impl Config {
     }
 
     fn check(&self) -> Result<(), String> {
-        let id = &self.installation;
-        let safe = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.');
-        if id.is_empty() || id.len() > 64 || !id.chars().all(safe) || id.starts_with('.') {
-            return Err(format!(
-                "installation {id:?}: 1 to 64 letters, digits, '-', '_' or '.'"
-            ));
-        }
+        check_installation(&self.installation)?;
         let aws = &self.aws;
         if aws.region.is_empty()
             || !aws
@@ -104,6 +98,18 @@ impl Config {
         }
         Ok(())
     }
+}
+
+/// An installation's id, as its certificate's CN and its reports' prefix
+/// name it: 1 to 64 letters, digits, `-`, `_` or `.`, not starting with `.`.
+pub fn check_installation(id: &str) -> Result<(), String> {
+    let safe = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.');
+    if id.is_empty() || id.len() > 64 || !id.chars().all(safe) || id.starts_with('.') {
+        return Err(format!(
+            "installation {id:?}: 1 to 64 letters, digits, '-', '_' or '.'"
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
