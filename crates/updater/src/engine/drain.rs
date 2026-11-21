@@ -7,7 +7,7 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 
 use super::{enter, finish, leave_maintenance, outcome, Drain, Host, Who, DRAIN_POLL};
-use crate::state::{OutcomeKind, Phase, Previous, State, Target};
+use crate::state::{OutcomeKind, Phase, Previous, SavedPackage, State, Target};
 
 pub(super) fn drain(
     host: &dyn Host,
@@ -93,14 +93,21 @@ pub(super) fn back_up(
     let prepare = || -> Result<(PathBuf, Previous), String> {
         let backup = host.back_up()?;
         let installed = host.installed()?;
-        let (package, manifest) = host.save_package(&installed.version)?;
+        let mut packages = Vec::with_capacity(installed.modules.len());
+        for module in installed.modules.keys() {
+            let (path, manifest) = host.save_package(module, &installed.version)?;
+            packages.push(SavedPackage {
+                module: module.clone(),
+                path,
+                manifest,
+            });
+        }
         Ok((
             backup,
             Previous {
                 version: installed.version,
                 modules: installed.modules,
-                package,
-                manifest,
+                packages,
             },
         ))
     };

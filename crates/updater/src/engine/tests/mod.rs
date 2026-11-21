@@ -10,6 +10,7 @@ use super::*;
 use crate::policy::{Mode, Policy, Request, Window};
 use crate::state::Module;
 
+mod packages;
 mod preparing;
 mod recovering;
 mod updating;
@@ -23,7 +24,8 @@ struct Fake {
     /// How many times it answers "something still runs" before emptying.
     running: Cell<u32>,
     scheduled: Cell<u64>,
-    /// What fails: "package", "backup", "start:1.3.0", "healthy:1.3.0",
+    /// What fails: "package" (every one), "package:<module>", "backup",
+    /// "put:<package path>", "start:1.3.0", "healthy:1.3.0",
     /// "healthy:previous", "restore"…
     fails: RefCell<HashSet<&'static str>>,
     /// The version brought up.
@@ -88,12 +90,23 @@ fn modules(version: &str) -> Modules {
     ])
 }
 
+/// A module's package, providing and requiring nothing.
+fn package(module: &str, version: &str) -> OfferedPackage {
+    OfferedPackage {
+        module: module.into(),
+        key: format!("packages/{module}/{version}.tar.gz"),
+        sha256: "abc".into(),
+        provides: Vec::new(),
+        requires: Vec::new(),
+    }
+}
+
 fn offer(version: &str) -> Offer {
+    let modules = modules(version);
     Offer {
         version: version.into(),
-        modules: modules(version),
-        package_url: format!("https://s3/quality-data-{version}.tar.gz"),
-        package_sha256: "abc".into(),
+        packages: modules.keys().map(|m| package(m, version)).collect(),
+        modules,
         notes: "what is new".into(),
         registry: None,
     }
@@ -124,12 +137,12 @@ impl Host for Fake {
         }
         Ok(())
     }
-    fn download_package(&self, o: &Offer) -> Result<PathBuf, String> {
-        self.note(format!("download_package:{}", o.version));
-        if self.fails_at("package") {
+    fn download_package(&self, o: &Offer, p: &OfferedPackage) -> Result<PathBuf, String> {
+        self.note(format!("download_package:{}:{}", p.module, o.version));
+        if self.fails_at("package") || self.fails_at(&format!("package:{}", p.module)) {
             return Err("the SHA-256 does not match".into());
         }
-        Ok(format!("/packages/{}.tar.gz", o.version).into())
+        Ok(format!("/packages/{}-{}.tar.gz", p.module, o.version).into())
     }
     fn pull_images(&self, o: &Offer) -> Result<(), String> {
         self.note(format!("pull_images:{}", o.version));
@@ -178,10 +191,10 @@ impl Host for Fake {
         }
         Ok("/backups/quality-data-1".into())
     }
-    fn save_package(&self, version: &str) -> Result<(PathBuf, Vec<String>), String> {
-        self.note(format!("save_package:{version}"));
+    fn save_package(&self, module: &str, version: &str) -> Result<(PathBuf, Vec<String>), String> {
+        self.note(format!("save_package:{module}:{version}"));
         Ok((
-            format!("/releases/{version}.tar").into(),
+            format!("/releases/{module}-{version}.tar").into(),
             vec!["compose.yml".into(), "assets/app-1.2.0.js".into()],
         ))
     }
@@ -192,12 +205,15 @@ impl Host for Fake {
             vec!["compose.yml".into(), "assets/app-1.3.0.js".into()]
         })
     }
-    fn put_package(&self, package: &Path, remove: &[String]) -> Result<(), String> {
+    fn put_package(&self, module: &str, package: &Path, remove: &[String]) -> Result<(), String> {
         self.note(format!(
-            "put_package:{}:remove={}",
+            "put_package:{module}:{}:remove={}",
             package.display(),
             remove.join(",")
         ));
+        if self.fails_at(&format!("put:{}", package.display())) {
+            return Err("no space left on the device".into());
+        }
         Ok(())
     }
     fn put_version(&self, version: &str, modules: &Modules) -> Result<(), String> {
@@ -267,4 +283,17 @@ fn automatic() -> Orders {
 
 fn run(f: &Fake, s: &mut State, who: Who) {
     advance(f, s, who).unwrap();
+}
+
+/// Whether every one of `steps` was called, in that order.
+fn in_order(f: &Fake, steps: &[&str]) {
+    let calls = f.calls.borrow().clone();
+    let mut from = 0;
+    for step in steps {
+        let i = calls[from..]
+            .iter()
+            .position(|l| l == step)
+            .unwrap_or_else(|| panic!("missing {step} (after {from}): {calls:#?}"));
+        from += i + 1;
+    }
 }

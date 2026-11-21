@@ -17,9 +17,13 @@ pub(super) fn apply(
         Some(&format!("updating to {}", target.version)),
         MAINTENANCE,
     );
+    // Every module in one step, in its order; any failure goes back on all.
     let apply = || -> Result<(), String> {
-        let new = host.manifest(&target.package)?;
-        host.put_package(&target.package, &difference(&previous.manifest, &new))?;
+        for package in &target.packages {
+            let new = host.manifest(&package.path)?;
+            let remove = difference(previous.manifest_of(&package.module), &new);
+            host.put_package(&package.module, &package.path, &remove)?;
+        }
         host.put_version(&target.version, &target.modules)?;
         host.start()
     };

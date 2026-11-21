@@ -1,16 +1,16 @@
 //! Idle or prepared: ask where versions come from, prepare a new one outside
 //! the window (package, images, space) and start when the moment comes.
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 
+use super::order::apply_order;
 use super::{
     enter, finish, is_newer, outcome, CloudError, Host, Offer, Who, CHECK_EVERY, MAINTENANCE,
 };
 use crate::policy::{Mode, Orders};
-use crate::state::{Available, OutcomeKind, Phase, State, Target};
+use crate::state::{Available, ModulePackage, OutcomeKind, Phase, State, Target};
 
 /// Idle or with a prepared version: ask the cloud if due, and start if the
 /// moment came.
@@ -136,7 +136,7 @@ fn check(host: &dyn Host, s: &mut State, now: DateTime<Utc>) -> Result<(), Strin
     });
     // That same version already prepared: nothing to download.
     if let Phase::Prepared { target } = &s.phase {
-        if target.version == offer.version && target.package.exists() {
+        if target.version == offer.version && target.packages.iter().all(|p| p.path.exists()) {
             host.save(s)?;
             return Ok(());
         }
@@ -145,23 +145,31 @@ fn check(host: &dyn Host, s: &mut State, now: DateTime<Utc>) -> Result<(), Strin
     prepare(host, s, offer, now)
 }
 
-/// Check the space, download the package and pull the images; a failure
-/// leaves it idle, with nothing touched.
+/// Check the space, download every module's package in the order they are
+/// applied and pull the images; a failure leaves it idle, with nothing
+/// touched.
 fn prepare(host: &dyn Host, s: &mut State, offer: Offer, now: DateTime<Utc>) -> Result<(), String> {
-    let prepare = || -> Result<PathBuf, String> {
+    let prepare = || -> Result<Vec<ModulePackage>, String> {
+        let order = apply_order(&offer.packages)?;
         host.free_space()?;
-        let package = host.download_package(&offer)?;
+        let mut packages = Vec::with_capacity(order.len());
+        for package in &order {
+            packages.push(ModulePackage {
+                module: package.module.clone(),
+                path: host.download_package(&offer, package)?,
+            });
+        }
         host.pull_images(&offer)?;
-        Ok(package)
+        Ok(packages)
     };
     match prepare() {
-        Ok(package) => {
+        Ok(packages) => {
             tracing::info!(version = %offer.version, "new version prepared");
             s.phase = Phase::Prepared {
                 target: Target {
                     version: offer.version,
                     modules: offer.modules,
-                    package,
+                    packages,
                     notes: offer.notes,
                 },
             };

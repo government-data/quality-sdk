@@ -22,10 +22,21 @@ pub(super) fn roll_back(
     reason: String,
 ) -> Result<bool, String> {
     tracing::warn!(version = %target.version, "{reason}: going back to {}", previous.version);
+    // Every module back to its previous package. A module only the new
+    // version has keeps its files (a removed module keeps its data); it is
+    // not among the previous version's modules, so it is not put.
     let go_back = || -> Result<(), String> {
-        // What the new one brought and the previous one did not have.
-        let new = host.manifest(&target.package).unwrap_or_default();
-        host.put_package(&previous.package, &difference(&new, &previous.manifest))?;
+        for saved in &previous.packages {
+            // What the new one brought and the previous one did not have.
+            let new = target
+                .packages
+                .iter()
+                .find(|p| p.module == saved.module)
+                .and_then(|p| host.manifest(&p.path).ok())
+                .unwrap_or_default();
+            let remove = difference(&new, &saved.manifest);
+            host.put_package(&saved.module, &saved.path, &remove)?;
+        }
         host.put_version(&previous.version, &previous.modules)?;
         host.start()?;
         host.healthy(None)
