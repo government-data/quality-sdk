@@ -12,6 +12,10 @@ authors = ["quality-data"]
 repository = "https://github.com/quality-data/quality-sdk"
 
 [workspace.dependencies]
+# The SDK's own crates.
+index-model = { path = "crates/index-model" }
+updater = { path = "crates/updater" }
+
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 chrono-tz = "0.10"
@@ -23,6 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
+toml = { version = "1.1", default-features = false, features = ["std", "parse", "serde"] }
 tracing = "0.1"
 
 [workspace.lints.rust]
