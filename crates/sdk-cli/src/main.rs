@@ -27,6 +27,14 @@ commands:
       if absent), sign it with the CA, and import it into Roles Anywhere as
       the trust anchor's CRL NAME (default installations), or update it.
       AWS credentials come from the environment (AWS_ACCESS_KEY_ID...).
+  publish --channel stable|patch --bucket NAME --region REGION --kms-key KEY
+          [--index-key FILE] VERSION.toml
+      From CI (the publish role) or by a person: add the platform version in
+      VERSION.toml to index/<channel>.json with the next sequence, upload
+      its modules' packages, sign the index with the KMS key (the SHA-256,
+      MessageType=DIGEST) and write it with its .sig once the signature
+      verifies with the index key (FILE, PEM, or else KMS's public key).
+      AWS credentials come from the environment.
 
 options:
   --root DIR   the installation's paths under DIR (development)";
@@ -53,6 +61,11 @@ fn main() -> ExitCode {
             ],
         )
         .and_then(|a| revoke(&a)),
+        "publish" => Args::parse(
+            args,
+            &["channel", "bucket", "region", "kms-key", "index-key"],
+        )
+        .and_then(|a| publish(&a)),
         "-h" | "--help" | "help" => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
@@ -191,6 +204,48 @@ fn revoke(args: &Args) -> Result<(), String> {
     }
     eprintln!(
         "The installation gets no new credentials from now on; those it holds last up to an hour."
+    );
+    Ok(())
+}
+
+fn publish(args: &Args) -> Result<(), String> {
+    use aws_client::client::{Account, Bucket};
+    use aws_client::kms::Kms;
+    use index_model::{Channel, IndexKey};
+
+    let channel = match args.required("channel")? {
+        "stable" => Channel::Stable,
+        "patch" => Channel::Patch,
+        other => return Err(format!("--channel {other:?}: stable or patch")),
+    };
+    let release = sdk_cli::publish::input::read(Path::new(args.one("a platform version file")?))?;
+    let account = std::rc::Rc::new(Account::new(
+        args.required("region")?,
+        Box::new(aws_client::credentials::Environment),
+        Box::new(aws_client::http::Https::default()),
+    ));
+    let kms = Kms::new(account.clone(), args.required("kms-key")?);
+    let key = match args.get("index-key") {
+        Some(file) => IndexKey::from_public_key_pem(&pki::read(Path::new(file))?),
+        None => {
+            let der = kms.public_key().map_err(|e| format!("KMS: {e}"))?;
+            IndexKey::from_public_key_der(&der)
+        }
+    }
+    .map_err(|e| e.to_string())?;
+    let bucket = Bucket::new(account, args.required("bucket")?);
+    let version = release.version.version.to_string();
+    let done =
+        sdk_cli::publish::publish(&bucket, &kms, &key, channel, release, chrono::Utc::now())?;
+    for p in &done.uploaded {
+        eprintln!("package   {p} (uploaded)");
+    }
+    for p in &done.kept {
+        eprintln!("package   {p} (already there, same SHA-256)");
+    }
+    eprintln!(
+        "index     {} sequence {}, with {version}, signed and verified",
+        done.index_key, done.sequence
     );
     Ok(())
 }
