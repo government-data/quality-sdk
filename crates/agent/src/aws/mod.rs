@@ -10,6 +10,7 @@ pub mod client;
 pub mod credentials;
 pub mod ecr;
 pub mod http;
+pub mod images;
 pub mod index;
 pub mod packages;
 pub mod sigv4;
