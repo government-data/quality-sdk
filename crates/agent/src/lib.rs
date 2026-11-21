@@ -16,6 +16,7 @@ pub mod config;
 mod fake_exec;
 pub mod host;
 pub mod manifests;
+pub mod module_data;
 pub mod package_archive;
 pub mod package_files;
 pub mod paths;

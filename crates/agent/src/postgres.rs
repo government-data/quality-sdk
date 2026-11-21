@@ -13,11 +13,17 @@
 //! - `databases`: their names, written last, once every dump read back
 //!   whole (`pg_restore --list` and a full read: a dump cut short passes
 //!   `--list` alone). Without it there is no backup.
+//!
+//! Before `databases` is written, the critical data the installed modules'
+//! manifests name (their volumes and keys) is backed up beside the dumps
+//! and checked ([`ModuleData`]); a restore puts it back after the
+//! databases.
 
 use std::path::{Path, PathBuf};
 
 use crate::command::{Cmd, Runner};
 use crate::compose;
+use crate::module_data::ModuleData;
 
 /// How many backups are kept.
 pub const KEEP: usize = 10;
@@ -38,6 +44,8 @@ pub struct Postgres {
     pub runner: Box<dyn Runner>,
     /// How long the database's service may take to be healthy.
     pub wait_secs: u64,
+    /// The modules' volumes and keys.
+    pub data: ModuleData,
 }
 
 impl std::fmt::Debug for Postgres {
@@ -74,6 +82,7 @@ impl Postgres {
             backups: paths.backups_dir(),
             runner: Box::new(crate::command::System),
             wait_secs: 300,
+            data: ModuleData::new(paths),
         }
     }
 
@@ -158,8 +167,9 @@ fn is_backup_name(name: &str) -> bool {
 }
 
 impl Postgres {
-    /// Every database dumped into `dir` and read back whole, then their
-    /// names written: how many.
+    /// Every database dumped into `dir` and read back whole, the modules'
+    /// critical data beside them, then the databases' names written: how
+    /// many databases.
     fn dump_into(&self, dir: &Path) -> Result<usize, String> {
         let databases = self.databases()?;
         let globals = r#"pg_dumpall -U "$POSTGRES_USER" --globals-only"#;
@@ -174,6 +184,8 @@ impl Postgres {
             self.run(&self.in_database(dump, &[db])?.stdout(&file))?;
             self.check_dump(&file)?;
         }
+        let pieces = self.data.back_up_into(dir, &databases)?;
+        tracing::info!(pieces, "module data backed up");
         let list = format!("{}\n", databases.join("\n"));
         std::fs::write(dir.join("databases"), list)
             .map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -206,7 +218,8 @@ impl crate::host::Database for Postgres {
     }
 
     /// The database's service brought up alone (the host stopped every
-    /// module), then each database restored in one transaction.
+    /// module), then each database restored in one transaction, then the
+    /// modules' data.
     fn restore(&self, backup: &Path) -> Result<(), String> {
         let list = std::fs::read_to_string(backup.join("databases"))
             .map_err(|e| format!("{} is not a whole backup: {e}", backup.display()))?;
@@ -236,7 +249,7 @@ impl crate::host::Database for Postgres {
                 .map_err(|e| format!("restoring {db}: {e}"))?;
         }
         tracing::warn!(backup = %backup.display(), "database restored");
-        Ok(())
+        self.data.restore(backup)
     }
 }
 
