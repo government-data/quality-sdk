@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::model::{Data, Health, Manifest, MAX_CHECK_TIMEOUT_SECS};
+use crate::model::{Data, Drain, Health, Manifest, MAX_CHECK_TIMEOUT_SECS};
 use crate::ManifestError;
 
 fn invalid(why: String) -> ManifestError {
@@ -88,7 +88,8 @@ impl Manifest {
         check_name("the module", &self.name)?;
         self.validate_capabilities()?;
         validate_health(&self.health)?;
-        validate_data(&self.data)
+        validate_data(&self.data)?;
+        validate_drain(self.drain.as_ref())
     }
 
     fn validate_capabilities(&self) -> Result<(), ManifestError> {
@@ -144,6 +145,22 @@ impl Manifest {
         }
         let names = self.requires.capabilities.iter().map(|c| c.name.as_str());
         check_unique("requires", names)
+    }
+}
+
+/// A path the core calls on the module's service: `/` first, then
+/// printable ASCII with no space, query or fragment.
+fn validate_drain(drain: Option<&Drain>) -> Result<(), ManifestError> {
+    let Some(d) = drain else { return Ok(()) };
+    let ok = d.path.starts_with('/')
+        && d.path.len() <= 255
+        && d.path
+            .chars()
+            .all(|c| c.is_ascii_graphic() && !matches!(c, '?' | '#' | '\\'));
+    if ok {
+        Ok(())
+    } else {
+        Err(invalid(format!("drain.path {:?} is not a path", d.path)))
     }
 }
 
