@@ -14,6 +14,7 @@ workspace = true
 # The AWS calls of the agent and the CLI, signed with SigV4 by hand: the AWS
 # SDK's crates need a newer Rust than the workspace's (decision 0003).
 [dependencies]
+base64.workspace = true
 chrono.workspace = true
 hex.workspace = true
 hmac.workspace = true
