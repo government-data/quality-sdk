@@ -13,6 +13,7 @@ use p256::ecdsa::{Signature, SigningKey};
 use p256::pkcs8::{EncodePublicKey, LineEnding};
 
 use common::dir;
+use sdk_cli::publish::images::Registry;
 use sdk_cli::publish::input::{parse, Release};
 use sdk_cli::publish::{publish, DigestSigner, Store};
 
@@ -41,6 +42,29 @@ impl Store for Memory {
     fn put(&self, key: &str, body: Vec<u8>, _: &str) -> Result<(), String> {
         self.objects.borrow_mut().insert(key.into(), body);
         Ok(())
+    }
+}
+
+/// The installations' registry: every image of [`release`] is there, and
+/// the digests in `missing` are not.
+#[derive(Default)]
+struct Ecr {
+    missing: Vec<String>,
+    asked: RefCell<Vec<(String, String, String)>>,
+}
+
+const REGISTRY: &str = "1.dkr.ecr.us-east-1.amazonaws.com";
+
+impl Registry for Ecr {
+    fn host(&self) -> Result<String, String> {
+        Ok(REGISTRY.into())
+    }
+
+    fn has_image(&self, id: &str, repository: &str, digest: &str) -> Result<bool, String> {
+        self.asked
+            .borrow_mut()
+            .push((id.into(), repository.into(), digest.into()));
+        Ok(!self.missing.iter().any(|d| d == digest))
     }
 }
 
@@ -110,6 +134,7 @@ fn the_first_publication_writes_sequence_1_that_an_agent_verifies() {
     let done = publish(
         &m,
         &signer(1),
+        &Ecr::default(),
         &key(1),
         Channel::Stable,
         release("1.4.0", b"p"),
@@ -137,6 +162,7 @@ fn the_next_publication_adds_a_version_with_the_next_sequence() {
     publish(
         &m,
         &signer(1),
+        &Ecr::default(),
         &key(1),
         Channel::Stable,
         release("1.4.0", b"p"),
@@ -146,6 +172,7 @@ fn the_next_publication_adds_a_version_with_the_next_sequence() {
     let done = publish(
         &m,
         &signer(1),
+        &Ecr::default(),
         &key(1),
         Channel::Stable,
         release("1.5.0", b"q"),
@@ -164,6 +191,7 @@ fn the_next_publication_adds_a_version_with_the_next_sequence() {
     let err = publish(
         &m,
         &signer(1),
+        &Ecr::default(),
         &key(1),
         Channel::Stable,
         release("1.5.0", b"q"),
@@ -182,6 +210,7 @@ fn a_package_already_there_is_kept_and_other_bytes_under_its_key_refused() {
     let done = publish(
         &m,
         &signer(1),
+        &Ecr::default(),
         &key(1),
         Channel::Stable,
         release("1.4.0", b"p"),
@@ -196,6 +225,7 @@ fn a_package_already_there_is_kept_and_other_bytes_under_its_key_refused() {
     let err = publish(
         &m,
         &signer(1),
+        &Ecr::default(),
         &key(1),
         Channel::Stable,
         release("1.4.0", b"p"),
@@ -212,6 +242,7 @@ fn a_signature_that_does_not_verify_writes_no_index() {
     let err = publish(
         &m,
         &signer(2),
+        &Ecr::default(),
         &key(1),
         Channel::Stable,
         release("1.4.0", b"p"),
@@ -228,6 +259,7 @@ fn a_published_index_that_does_not_verify_or_an_invalid_version_is_refused() {
     publish(
         &m,
         &signer(1),
+        &Ecr::default(),
         &key(1),
         Channel::Stable,
         release("1.4.0", b"p"),
@@ -242,6 +274,7 @@ fn a_published_index_that_does_not_verify_or_an_invalid_version_is_refused() {
     let err = publish(
         &m,
         &signer(1),
+        &Ecr::default(),
         &key(1),
         Channel::Stable,
         release("1.5.0", b"q"),
@@ -256,7 +289,16 @@ fn a_published_index_that_does_not_verify_or_an_invalid_version_is_refused() {
     module
         .images
         .insert("web".into(), "quality-data/web:latest".into());
-    let err = publish(&m, &signer(1), &key(1), Channel::Stable, r, at(0)).unwrap_err();
+    let err = publish(
+        &m,
+        &signer(1),
+        &Ecr::default(),
+        &key(1),
+        Channel::Stable,
+        r,
+        at(0),
+    )
+    .unwrap_err();
     assert!(err.contains("not pinned by digest"), "{err}");
     assert!(m.objects.borrow().is_empty(), "nothing is written");
 }
@@ -267,6 +309,7 @@ fn a_publication_that_came_in_between_stops_this_one() {
     publish(
         &other,
         &signer(1),
+        &Ecr::default(),
         &key(1),
         Channel::Stable,
         release("1.4.0", b"p"),
@@ -282,6 +325,7 @@ fn a_publication_that_came_in_between_stops_this_one() {
     let err = publish(
         &m,
         &signer(1),
+        &Ecr::default(),
         &key(1),
         Channel::Stable,
         release("1.5.0", b"q"),
@@ -293,4 +337,71 @@ fn a_publication_that_came_in_between_stops_this_one() {
         "{err}"
     );
     assert!(!m.objects.borrow().contains_key("index/stable.json"));
+}
+
+#[test]
+fn every_image_must_be_in_the_installations_registry_before_anything_is_written() {
+    let m = Memory::default();
+    let ecr = Ecr::default();
+    publish(
+        &m,
+        &signer(1),
+        &ecr,
+        &key(1),
+        Channel::Stable,
+        release("1.4.0", b"p"),
+        at(0),
+    )
+    .unwrap();
+    assert_eq!(
+        ecr.asked.borrow()[0],
+        (
+            "1".to_string(),
+            "quality-data/quality-data/api".to_string(),
+            format!("sha256:{DIGEST}")
+        )
+    );
+
+    let m = Memory::default();
+    let missing = Ecr {
+        missing: vec![format!("sha256:{DIGEST}")],
+        ..Ecr::default()
+    };
+    let err = publish(
+        &m,
+        &signer(1),
+        &missing,
+        &key(1),
+        Channel::Stable,
+        release("1.4.0", b"p"),
+        at(0),
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("quality-data/api") && err.contains("not in its repository"),
+        "{err}"
+    );
+    assert!(
+        m.objects.borrow().is_empty(),
+        "nothing is uploaded or signed"
+    );
+
+    let mut r = release("1.4.0", b"p");
+    let api = r.version.modules.get_mut("quality-data").unwrap();
+    api.images.insert(
+        "web".into(),
+        format!("2.dkr.ecr.us-east-1.amazonaws.com/quality-data/quality-data/web@sha256:{DIGEST}"),
+    );
+    let err = publish(
+        &m,
+        &signer(1),
+        &Ecr::default(),
+        &key(1),
+        Channel::Stable,
+        r,
+        at(0),
+    )
+    .unwrap_err();
+    assert!(err.contains(&format!("is not in {REGISTRY}")), "{err}");
+    assert!(m.objects.borrow().is_empty());
 }

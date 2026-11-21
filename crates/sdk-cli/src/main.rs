@@ -33,7 +33,9 @@ commands:
   publish --channel stable|patch --bucket NAME --region REGION --kms-key KEY
           [--index-key FILE] VERSION.toml
       From CI (the publish role) or by a person: add the platform version in
-      VERSION.toml to index/<channel>.json with the next sequence, upload
+      VERSION.toml to index/<channel>.json with the next sequence, once
+      every image it names is in the installations' ECR registry by
+      digest (DescribeImages); upload
       its modules' packages, sign the index with the KMS key (the SHA-256,
       MessageType=DIGEST) and write it with its .sig once the signature
       verifies with the index key (FILE, PEM, or else KMS's public key).
@@ -241,16 +243,25 @@ fn publish(args: &Args) -> Result<(), String> {
         }
     }
     .map_err(|e| e.to_string())?;
+    let registry = aws_client::ecr::Ecr::new(account.clone());
     let bucket = Bucket::new(account, args.required("bucket")?);
     let version = release.version.version.to_string();
-    let done =
-        sdk_cli::publish::publish(&bucket, &kms, &key, channel, release, chrono::Utc::now())?;
+    let done = sdk_cli::publish::publish(
+        &bucket,
+        &kms,
+        &registry,
+        &key,
+        channel,
+        release,
+        chrono::Utc::now(),
+    )?;
     for p in &done.uploaded {
         eprintln!("package   {p} (uploaded)");
     }
     for p in &done.kept {
         eprintln!("package   {p} (already there, same SHA-256)");
     }
+    eprintln!("images    every one in the installations' registry");
     eprintln!(
         "index     {} sequence {}, with {version}, signed and verified",
         done.index_key, done.sequence

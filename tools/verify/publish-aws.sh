@@ -6,10 +6,13 @@
 #   1. `quality-sdk enrol` lays out a test installation's key and request,
 #      `quality-sdk sign-enrolment` signs it for one day with the CA.
 #   2. `quality-sdk publish` publishes a test platform version (one module,
-#      `qs-verify`, with a tiny package) to a channel that has no index yet,
-#      pinned to the Terraform's index key; a second version is published
-#      with the key read from KMS (sequence 2); the same version again is
-#      refused.
+#      `qs-verify`, with a tiny package and one tiny image) to a channel
+#      that has no index yet, pinned to the Terraform's index key; a second
+#      version is published with the key read from KMS (sequence 2); the
+#      same version again is refused, and so is a version whose image
+#      digest is not in ECR. The image is built here (one small file, no
+#      base image) and pushed to the first repository under the run's tag,
+#      unless QD_IMAGE names one already there.
 #   3. `quality-data-agent check --download` gets the offer (the test
 #      installation is the version's only pilot), downloads the package and
 #      checks its SHA-256.
@@ -17,7 +20,8 @@
 #      test certificate, and the agent is refused within QD_CRL_WAIT seconds.
 #
 # Everything it creates (the S3 object versions under index/<channel>.json,
-# packages/qs-verify/ and reports/<id>/, the test CRL) is removed on exit,
+# packages/qs-verify/ and reports/<id>/, the test CRL, the pushed test image
+# and its local copy) is removed on exit,
 # also on failure. A channel that already has an index is refused: a test
 # version is never added to a published channel.
 #
@@ -34,13 +38,14 @@
 #                       (default orquestador)
 #   QD_SIGNING_HELPER   a local aws_signing_helper instead of downloading it
 #   QD_CHANNEL          the channel to publish on, without an index (default patch)
-#   QD_IMAGE            an image `<repo>@sha256:<digest>` for the test module
-#                       (default: the first repository with digest 0…0; the
-#                       check pulls no image)
+#   QD_IMAGE            an image `<registry>/<repo>@sha256:<digest>` already in
+#                       ECR for the test module (default: a tiny image built
+#                       and pushed to the first repository, removed on exit)
 #   QD_CRL_WAIT         seconds to wait for the CRL to take effect (default 600)
 #   QD_SKIP_REVOKE      1 to skip step 4
 #
-# Needs: terraform, aws (v2), openssl, jq, curl, sha256sum, tar.
+# Needs: terraform, aws (v2), openssl, jq, curl, sha256sum, tar, and docker
+# unless QD_IMAGE is set.
 
 set -euo pipefail
 
@@ -66,6 +71,9 @@ CONF="$ROOT/etc/quality-data"
 BUCKET=""
 REGION=""
 CRL_NAME=""
+PUSHED_URL="" # the repository URL, name and digest of the image this run pushed
+PUSHED_REPO=""
+PUSHED_DIGEST=""
 SNAPSHOT=0 # 1 once what was there before the run is listed in before.tsv
 FAILED=0
 RESULTS=()
@@ -129,6 +137,18 @@ cleanup() {
         { echo "WARN: delete the CRL $id ($CRL_NAME) by hand"; left=1; }
     done <"$WORK/crls"
   fi
+  if [[ -n "$PUSHED_REPO" ]]; then
+    if [[ -n "$PUSHED_DIGEST" ]]; then
+      person ecr batch-delete-image --repository-name "$PUSHED_REPO" \
+        --image-ids imageDigest="$PUSHED_DIGEST" --output json |
+        jq -e '(.failures // []) | length == 0' >/dev/null ||
+        { echo "WARN: delete $PUSHED_REPO@$PUSHED_DIGEST from ECR by hand"; left=1; }
+    else
+      person ecr batch-delete-image --repository-name "$PUSHED_REPO" \
+        --image-ids imageTag="$RUN" >/dev/null 2>&1
+    fi
+    docker image rm "$PUSHED_URL:$RUN" >/dev/null 2>&1
+  fi
   rm -rf "$WORK"
   if ((left)); then rc=1; fi
   exit "$rc"
@@ -154,8 +174,8 @@ REGION="$(cut -d: -f4 <<<"$TRUST_ANCHOR")"
 PROFILE_ARN="$(tf profile_arn)"
 ROLE_ARN="$(tf installation_role_arn)"
 SIGNING_KEY="$(tf index_signing_key)"
-IMAGE="${QD_IMAGE:-$(terraform -chdir="$REPO_ROOT/infra/aws" output -json repositories |
-  jq -r 'to_entries[0].value')@sha256:$(printf '0%.0s' {1..64})}"
+FIRST_REPO_URL="$(terraform -chdir="$REPO_ROOT/infra/aws" output -json repositories |
+  jq -r 'to_entries[0].value')"
 BUCKET="$(tf releases_bucket)"
 
 person sts get-caller-identity >/dev/null ||
@@ -172,6 +192,33 @@ for prefix in "index/$CHANNEL.json" "packages/qs-verify/" "reports/$ID/"; do
   cat "$WORK/one.tsv" >>"$WORK/before.tsv"
 done
 SNAPSHOT=1
+
+# The test image: QD_IMAGE, or a tiny one pushed under the run's tag.
+if [[ -n "${QD_IMAGE:-}" ]]; then
+  IMAGE="$QD_IMAGE"
+else
+  command -v docker >/dev/null || die "docker is not installed (or set QD_IMAGE)"
+  PUSHED_URL="$FIRST_REPO_URL"
+  PUSHED_REPO="${FIRST_REPO_URL#*/}"
+  tagged="$(person ecr describe-images --repository-name "$PUSHED_REPO" \
+    --filter tagStatus=TAGGED --output json | jq '.imageDetails | length')"
+  # The lifecycle policy keeps 30 tagged images: a test image must not push
+  # a published version out.
+  ((tagged < 29)) || die "$PUSHED_REPO holds $tagged tagged images: set QD_IMAGE"
+  mkdir -p "$WORK/image" "$WORK/docker"
+  echo "quality-sdk publish check $RUN" >"$WORK/image/README"
+  printf 'FROM scratch\nCOPY README /README\n' >"$WORK/image/Dockerfile"
+  docker build --quiet -t "$PUSHED_URL:$RUN" "$WORK/image" >/dev/null
+  person ecr get-login-password |
+    DOCKER_CONFIG="$WORK/docker" docker login --username AWS --password-stdin \
+      "${PUSHED_URL%%/*}" >/dev/null
+  DOCKER_CONFIG="$WORK/docker" docker push --quiet "$PUSHED_URL:$RUN" >/dev/null
+  rm -rf "$WORK/docker"
+  PUSHED_DIGEST="$(person ecr describe-images --repository-name "$PUSHED_REPO" \
+    --image-ids imageTag="$RUN" --query 'imageDetails[0].imageDigest' --output text)"
+  [[ "$PUSHED_DIGEST" == sha256:* ]] || die "the test image was not pushed"
+  IMAGE="$PUSHED_URL@$PUSHED_DIGEST"
+fi
 
 HELPER="$WORK/aws_signing_helper"
 if [[ -n "${QD_SIGNING_HELPER:-}" ]]; then
@@ -219,7 +266,7 @@ EOF
 
 # --- 2. Publish -------------------------------------------------------------
 
-publication() { # publication version: a version file for the test module
+publication() { # publication version [image]: a version file for the test module
   mkdir -p "$WORK/$1"
   echo "quality-sdk publish check $RUN $1" >"$WORK/$1/README"
   tar -czf "$WORK/$1/qs-verify.tar.gz" -C "$WORK/$1" README
@@ -237,15 +284,18 @@ version = "$1"
 package = "qs-verify.tar.gz"
 
 [modules.qs-verify.images]
-test = "$IMAGE"
+test = "${2:-$IMAGE}"
 EOF
 }
 V1="0.0.1-${RUN#qs-verify-}"
 V1="${V1//[^0-9A-Za-z.-]/-}"
 V2="0.0.2-${RUN#qs-verify-}"
 V2="${V2//[^0-9A-Za-z.-]/-}"
+V3="0.0.3-${RUN#qs-verify-}"
+V3="${V3//[^0-9A-Za-z.-]/-}"
 publication "$V1"
 publication "$V2"
+publication "$V3" "${IMAGE%@*}@sha256:$(printf '0%.0s' {1..64})"
 common=(--channel "$CHANNEL" --bucket "$BUCKET" --region "$REGION" --kms-key "$SIGNING_KEY")
 
 if sdk_as_person publish "${common[@]}" --index-key "$CONF/index-key.pem" \
@@ -267,6 +317,14 @@ elif grep -q "already in" "$WORK/p3.err"; then
   record PASS "the same version again is refused"
 else
   record FAIL "the same version again is refused" "$(tail -1 "$WORK/p3.err")"
+fi
+
+if sdk_as_person publish "${common[@]}" "$WORK/$V3/version.toml" 2>"$WORK/p4.err"; then
+  record FAIL "an image digest that is not in ECR is refused" "it was published"
+elif grep -q "not in its repository" "$WORK/p4.err"; then
+  record PASS "an image digest that is not in ECR is refused"
+else
+  record FAIL "an image digest that is not in ECR is refused" "$(tail -1 "$WORK/p4.err")"
 fi
 
 # --- 3. The agent -------------------------------------------------------------
