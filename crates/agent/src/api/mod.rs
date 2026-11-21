@@ -11,6 +11,7 @@
 //! | `PUT /updater/v1/maintenance` | `maintenance` |
 //! | `GET /updater/v1/drain?horizon_secs=N` | `drain` |
 //! | `GET /updater/v1/version` | the version part of `healthy` |
+//! | `PUT /updater/v1/modules` | which modules are installed (after a start, and when the agent starts) |
 
 use std::time::Duration;
 
@@ -20,7 +21,7 @@ use updater::engine::Drain;
 use updater::policy::Orders;
 use updater::state::State;
 
-use crate::host::Api;
+use crate::host::{Api, InstalledModule};
 
 pub mod internal_files;
 pub mod renew;
@@ -143,6 +144,11 @@ impl Api for UpdaterApi {
             .filter(|s| !s.is_empty())
             .map(str::to_string)
             .ok_or_else(|| format!("GET {PREFIX}/version: no `version` in its answer"))
+    }
+
+    fn put_modules(&self, modules: &[InstalledModule]) -> Result<(), String> {
+        let body = json!({ "modules": modules });
+        self.call("PUT", "/modules", Some(&body)).map(|_| ())
     }
 }
 

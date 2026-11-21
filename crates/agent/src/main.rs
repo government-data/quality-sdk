@@ -129,7 +129,13 @@ fn run(paths: &Paths, every: Duration, once: bool) -> ExitCode {
         "quality-data-agent runs"
     );
     let rounds = once.then_some(1);
-    let mut renew = || agent::service::renew(&renewer, chrono::Utc::now());
-    agent::service::run_with(&host, &paths.state_file(), every, rounds, &mut renew);
+    // Before each round: renew the internal certificate when due, and tell
+    // quality-data the installed modules until it has heard them (at start,
+    // and again after a failure).
+    let mut before = || {
+        agent::service::renew(&renewer, chrono::Utc::now());
+        host.tell_modules_if_untold();
+    };
+    agent::service::run_with(&host, &paths.state_file(), every, rounds, &mut before);
     ExitCode::SUCCESS
 }

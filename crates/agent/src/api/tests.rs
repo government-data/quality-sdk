@@ -159,12 +159,45 @@ fn the_version_that_answers_is_read_and_a_refusal_says_why() {
 }
 
 #[test]
+fn the_installed_modules_are_put_whole() {
+    let (base, sent) = server(&[("PUT /updater/v1/modules", 204, "")]);
+    let modules = [
+        InstalledModule {
+            name: "orchestrator".into(),
+            version: "2.0.1".into(),
+        },
+        InstalledModule {
+            name: "quality-data".into(),
+            version: "1.4.0".into(),
+        },
+    ];
+    api(&base).put_modules(&modules).unwrap();
+    let sent = sent.lock().unwrap();
+    assert_eq!(
+        (sent[0].0.as_str(), sent[0].1.as_str()),
+        ("PUT", "/updater/v1/modules")
+    );
+    let body: Value = serde_json::from_str(&sent[0].2).unwrap();
+    assert_eq!(
+        body,
+        json!({"modules": [
+            {"name": "orchestrator", "version": "2.0.1"},
+            {"name": "quality-data", "version": "1.4.0"},
+        ]})
+    );
+    let (base, _) = server(&[("PUT /updater/v1/modules", 400, r#"{"error":"bad module"}"#)]);
+    let err = api(&base).put_modules(&[]).unwrap_err();
+    assert!(err.contains("400 bad module"), "{err}");
+}
+
+#[test]
 fn an_api_that_does_not_answer_fails_every_call_but_orders() {
     let a = api(&closed());
     assert!(a.version().unwrap_err().contains("does not answer"));
     assert!(a.put_state(&State::new("1.0.0")).is_err());
     assert!(a.maintenance(None, Duration::ZERO).is_err());
     assert!(a.drain(Duration::ZERO).is_err());
+    assert!(a.put_modules(&[]).is_err());
 }
 
 /// An address where nothing listens.
