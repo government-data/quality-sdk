@@ -7,10 +7,12 @@
 //! account.
 
 pub mod client;
+pub mod cloud;
 pub mod credentials;
 pub mod ecr;
 pub mod http;
 pub mod images;
 pub mod index;
 pub mod packages;
+pub mod reports;
 pub mod sigv4;

@@ -9,13 +9,13 @@ use serde_json::{json, Value};
 use super::super::client::tests::{bucket, FakeAws};
 use super::*;
 
-const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+pub(crate) const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 fn signing_key(seed: u8) -> SigningKey {
     SigningKey::from_bytes(&[seed; 32].into()).unwrap()
 }
 
-fn index_key(seed: u8) -> IndexKey {
+pub(crate) fn index_key(seed: u8) -> IndexKey {
     let pem = signing_key(seed)
         .verifying_key()
         .to_public_key_pem(LineEnding::LF)
@@ -40,7 +40,7 @@ fn platform(version: &str) -> Value {
     })
 }
 
-fn index(channel: &str, sequence: u64) -> Vec<u8> {
+pub(crate) fn index(channel: &str, sequence: u64) -> Vec<u8> {
     let value = json!({
         "format": 1,
         "channel": channel,
@@ -52,7 +52,7 @@ fn index(channel: &str, sequence: u64) -> Vec<u8> {
 }
 
 /// A bucket that serves `bytes` as the stable index, signed with `seed`.
-fn serving(bytes: &[u8], seed: u8) -> FakeAws {
+pub(crate) fn serving(bytes: &[u8], seed: u8) -> FakeAws {
     let signature: Signature = signing_key(seed).sign(bytes);
     let sig = base64::engine::general_purpose::STANDARD.encode(signature.to_der().as_bytes());
     let aws = FakeAws::default();
@@ -61,7 +61,7 @@ fn serving(bytes: &[u8], seed: u8) -> FakeAws {
     aws
 }
 
-fn reader(name: &str) -> IndexReader {
+pub(crate) fn reader(name: &str) -> IndexReader {
     let seen = std::env::temp_dir()
         .join(format!("agent-index-{name}-{}", std::process::id()))
         .join("index-seen.json");

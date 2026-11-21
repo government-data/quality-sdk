@@ -152,4 +152,4 @@ fn save_seen(path: &Path, seen: &BTreeMap<String, u64>) -> Result<(), String> {
 
 #[cfg(test)]
 #[path = "index_tests.rs"]
-mod tests;
+pub(crate) mod tests;
