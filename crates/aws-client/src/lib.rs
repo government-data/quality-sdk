@@ -10,4 +10,6 @@ pub mod client;
 pub mod credentials;
 pub mod fake;
 pub mod http;
+pub mod kms;
+pub mod rolesanywhere;
 pub mod sigv4;

@@ -66,7 +66,13 @@ impl Account {
     }
 
     /// Sign `request` for `service` and send it; `what` names it in errors.
-    pub fn send(
+    pub fn send(&self, service: &str, request: Request, what: &str) -> Result<Response, AwsError> {
+        let r = self.send_unchecked(service, request, what)?;
+        check(what, r)
+    }
+
+    /// As [`Account::send`], with the answer whatever its status.
+    pub fn send_unchecked(
         &self,
         service: &str,
         mut request: Request,
@@ -87,11 +93,9 @@ impl Account {
             Utc::now(),
         )
         .map_err(AwsError::Failed)?;
-        let r = self
-            .transport
+        self.transport
             .send(request)
-            .map_err(|e| AwsError::Unavailable(format!("{what}: {e}")))?;
-        check(what, r)
+            .map_err(|e| AwsError::Unavailable(format!("{what}: {e}")))
     }
 }
 
@@ -126,6 +130,18 @@ impl Bucket {
         Ok(r.body)
     }
 
+    /// `GetObject`, with `None` for an object that is not there. S3 says
+    /// 404 only to a role that may list the bucket; to others it says 403.
+    pub fn get_if_exists(&self, key: &str) -> Result<Option<Vec<u8>>, AwsError> {
+        let request = Request::new("GET", &self.url(key));
+        let (what, request) = self.prepare(request);
+        let r = self.account.send_unchecked("s3", request, &what)?;
+        if r.status == 404 {
+            return Ok(None);
+        }
+        check(&what, r).map(|r| Some(r.body))
+    }
+
     /// `PutObject`.
     pub fn put(&self, key: &str, body: Vec<u8>, content_type: &str) -> Result<(), AwsError> {
         let mut request = Request::new("PUT", &self.url(key));
@@ -136,7 +152,13 @@ impl Bucket {
         self.send(request).map(|_| ())
     }
 
-    fn send(&self, mut request: Request) -> Result<Response, AwsError> {
+    fn send(&self, request: Request) -> Result<Response, AwsError> {
+        let (what, request) = self.prepare(request);
+        self.account.send("s3", request, &what)
+    }
+
+    /// The request with its payload's hash, and how errors name it.
+    fn prepare(&self, mut request: Request) -> (String, Request) {
         request
             .headers
             .push(("x-amz-content-sha256".into(), payload_hash(&request.body)));
@@ -146,7 +168,7 @@ impl Bucket {
             self.bucket,
             path_of(&request.url)
         );
-        self.account.send("s3", request, &what)
+        (what, request)
     }
 }
 
@@ -267,6 +289,19 @@ mod tests {
         assert!(matches!(
             b.get("index/d.json"),
             Err(AwsError::Unavailable(_))
+        ));
+        // Not there, to a role that may list the bucket.
+        aws.answer(
+            "GET /index/e.json",
+            404,
+            b"<Error><Code>NoSuchKey</Code></Error>",
+        );
+        assert_eq!(b.get_if_exists("index/e.json").unwrap(), None);
+        aws.answer("GET /index/f.json", 200, b"{}");
+        assert_eq!(b.get_if_exists("index/f.json").unwrap().unwrap(), b"{}");
+        assert!(matches!(
+            b.get_if_exists("index/a.json"),
+            Err(AwsError::Denied(_))
         ));
         assert_eq!(
             error_code(br#"{"__type":"com.amazon#AccessDeniedException"}"#).unwrap(),

@@ -30,6 +30,37 @@ pub trait CredentialSource {
     fn credentials(&self) -> Result<Credentials, String>;
 }
 
+/// The credentials in the environment (`AWS_ACCESS_KEY_ID`,
+/// `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`), as GitHub's OIDC login or
+/// `aws configure export-credentials --format env` leaves them.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Environment;
+
+impl CredentialSource for Environment {
+    fn credentials(&self) -> Result<Credentials, String> {
+        from_variables(|name| std::env::var(name).ok())
+    }
+}
+
+/// Credentials from variables, by name.
+fn from_variables(var: impl Fn(&str) -> Option<String>) -> Result<Credentials, String> {
+    let get = |name: &str| var(name).filter(|v| !v.trim().is_empty());
+    match (get("AWS_ACCESS_KEY_ID"), get("AWS_SECRET_ACCESS_KEY")) {
+        (Some(access_key_id), Some(secret_access_key)) => Ok(Credentials {
+            access_key_id,
+            secret_access_key,
+            session_token: get("AWS_SESSION_TOKEN"),
+            expiration: None,
+        }),
+        _ => Err(
+            "no AWS credentials in the environment: set AWS_ACCESS_KEY_ID and \
+                  AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN), for example with \
+                  `eval \"$(aws configure export-credentials --format env)\"`"
+                .into(),
+        ),
+    }
+}
+
 /// What `credential-process` prints (the AWS CLI's process credentials).
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -112,6 +143,35 @@ mod tests {
         let v2 = br#"{"Version":2,"AccessKeyId":"a","SecretAccessKey":"s"}"#;
         assert!(parse_process(v2).unwrap_err().contains("version 2"));
     }
+    #[test]
+    fn environment_credentials_need_a_key_and_its_secret() {
+        let vars = |pairs: &'static [(&str, &str)]| {
+            move |name: &str| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| *k == name)
+                    .map(|(_, v)| (*v).to_string())
+            }
+        };
+        let c = from_variables(vars(&[
+            ("AWS_ACCESS_KEY_ID", "ASIAX"),
+            ("AWS_SECRET_ACCESS_KEY", "s"),
+            ("AWS_SESSION_TOKEN", "t"),
+        ]))
+        .unwrap();
+        assert_eq!(
+            (c.access_key_id.as_str(), c.session_token.as_deref()),
+            ("ASIAX", Some("t"))
+        );
+        let no_token = from_variables(vars(&[
+            ("AWS_ACCESS_KEY_ID", "A"),
+            ("AWS_SECRET_ACCESS_KEY", "s"),
+        ]));
+        assert_eq!(no_token.unwrap().session_token, None);
+        let err = from_variables(vars(&[("AWS_ACCESS_KEY_ID", "A")])).unwrap_err();
+        assert!(err.contains("export-credentials"), "{err}");
+    }
+
     struct Counting(Cell<u32>, Option<DateTime<Utc>>);
     impl CredentialSource for Counting {
         fn credentials(&self) -> Result<Credentials, String> {
