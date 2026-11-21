@@ -9,5 +9,7 @@
 pub mod aws;
 pub mod check;
 pub mod config;
+#[cfg(test)]
+mod fake_exec;
 pub mod host;
 pub mod paths;

@@ -137,3 +137,18 @@ fn a_ca_key_that_is_not_its_certificates_or_a_validity_past_the_ca_is_refused() 
     sign::sign(&ca, &pem, 9).unwrap();
     std::fs::remove_dir_all(d).unwrap();
 }
+
+#[test]
+fn without_days_a_certificate_lasts_a_year_never_past_the_ca() {
+    let d = dir("days");
+    assert_eq!(sign::DEFAULT_DAYS, 365);
+    assert_eq!(sign::days_or_default(&ca(&d), None), 365);
+    assert_eq!(sign::days_or_default(&ca(&d), Some(30)), 30);
+    let (cert, key) = test_ca(&d, 10);
+    let short = Ca::load(&cert, &key).unwrap();
+    let days = sign::days_or_default(&short, None);
+    assert!((9..=10).contains(&days), "{days}");
+    let key = SigningKey::from_bytes(&[4; 32].into()).unwrap();
+    sign::sign(&short, &request("CN=inst-0001,OU=installation", &key), days).unwrap();
+    std::fs::remove_dir_all(d).unwrap();
+}

@@ -9,6 +9,8 @@
 //! time, updated after. The CRL stays current as long as the CA: its next
 //! update is the CA certificate's end.
 
+use std::ffi::OsStr;
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 use aws_client::client::AwsError;
@@ -29,6 +31,15 @@ use x509_cert::time::Time;
 use x509_cert::Version;
 
 use crate::pki::{serial_hex, Ca};
+
+/// Where the CRL file is kept when `--crl` is not given: beside the CA key,
+/// backed up with it (decision 0001), under the home directory `home`.
+pub fn default_crl(home: Option<&OsStr>) -> Result<PathBuf, String> {
+    match home {
+        Some(home) if !home.is_empty() => Ok(PathBuf::from(home).join("qd-ca/installations.crl")),
+        _ => Err("--crl is required: HOME is not set for its default".into()),
+    }
+}
 
 /// The next CRL, and what it lists.
 #[derive(Debug)]

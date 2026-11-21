@@ -17,15 +17,18 @@ commands:
       /etc/quality-data/enrolment/private-key.pem) and its certificate
       request (enrolment/request.csr, OU=installation, CN=ID), printed for
       the CA's holder. Run again, it keeps the key.
-  sign-enrolment --ca-cert FILE --ca-key FILE --days N [--out FILE] REQUEST
+  sign-enrolment --ca-cert FILE --ca-key FILE [--days N] [--out FILE] REQUEST
       By the CA's holder, offline: sign an installation's certificate
-      request for N days. Refused without OU=installation and one CN. The
-      certificate goes to FILE or standard output; its serial is printed.
-  revoke --ca-cert FILE --ca-key FILE --crl FILE --trust-anchor-arn ARN
+      request for N days (default 365, never past the CA's own validity).
+      Refused without OU=installation and one CN. The certificate goes to
+      FILE or standard output; its serial is printed.
+  revoke --ca-cert FILE --ca-key FILE [--crl FILE] --trust-anchor-arn ARN
          (--serial HEX | --certificate FILE) [--name NAME]
-      By the CA's holder: add the certificate to the CRL kept in FILE (made
-      if absent), sign it with the CA, and import it into Roles Anywhere as
-      the trust anchor's CRL NAME (default installations), or update it.
+      By the CA's holder: add the certificate to the CRL kept in FILE
+      (default ~/qd-ca/installations.crl, beside the CA key and backed up
+      with it; made if absent), sign it with the CA, and import it into
+      Roles Anywhere as the trust anchor's CRL NAME (default
+      installations), or update it.
       AWS credentials come from the environment (AWS_ACCESS_KEY_ID...).
   publish --channel stable|patch --bucket NAME --region REGION --kms-key KEY
           [--index-key FILE] VERSION.toml
@@ -119,10 +122,12 @@ fn sign_enrolment(args: &Args) -> Result<(), String> {
         Path::new(args.required("ca-cert")?),
         Path::new(args.required("ca-key")?),
     )?;
-    let days: u32 = args
-        .required("days")?
-        .parse()
+    let days = args
+        .get("days")
+        .map(|d| d.parse::<u32>())
+        .transpose()
         .map_err(|_| "--days is a number of days".to_string())?;
+    let days = sdk_cli::sign::days_or_default(&ca, days);
     let request = pki::read(Path::new(args.one("a certificate request")?))?;
     let signed = sdk_cli::sign::sign(&ca, &request, days)?;
     match args.get("out").map(PathBuf::from) {
@@ -167,7 +172,10 @@ fn revoke(args: &Args) -> Result<(), String> {
         }
         _ => return Err("give --serial or --certificate, one of them".into()),
     };
-    let crl_file = PathBuf::from(args.required("crl")?);
+    let crl_file = match args.get("crl") {
+        Some(file) => PathBuf::from(file),
+        None => sdk_cli::revoke::default_crl(std::env::var_os("HOME").as_deref())?,
+    };
     let previous = crl_file
         .exists()
         .then(|| pki::read(&crl_file))
