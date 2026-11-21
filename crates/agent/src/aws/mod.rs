@@ -7,11 +7,10 @@
 //! account. The signed calls themselves are the `aws-client` crate's,
 //! shared with the `quality-sdk` CLI.
 
-pub use aws_client::{client, http, sigv4};
+pub use aws_client::{client, ecr, http, sigv4};
 
 pub mod cloud;
 pub mod credentials;
-pub mod ecr;
 pub mod images;
 pub mod index;
 pub mod packages;

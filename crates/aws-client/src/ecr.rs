@@ -1,14 +1,17 @@
-//! The registry's temporary credential: ECR `GetAuthorizationToken`, which
-//! the installation role may call (decision 0001). It lasts 12 hours and is
-//! kept only in memory, in the engine's offer, to pull that offer's images.
+//! The installations' registry in ECR (decision 0001):
+//! `GetAuthorizationToken`, the registry's host and a temporary credential
+//! (12 hours, kept only in memory, which the agent pulls an offer's images
+//! with), and `DescribeImages` of one digest, which `publish` checks every
+//! image against before signing.
 
 use std::rc::Rc;
 
 use base64::Engine;
 use serde::Deserialize;
+use serde_json::json;
 
-use super::client::{Account, AwsError};
-use super::http::Request;
+use crate::client::{check, Account, AwsError};
+use crate::http::Request;
 
 /// The registry's host and a temporary user and password for it.
 #[derive(Clone, PartialEq, Eq)]
@@ -46,23 +49,69 @@ struct Data {
     proxy_endpoint: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Described {
+    #[serde(default)]
+    image_details: Vec<Detail>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Detail {
+    image_digest: String,
+}
+
 impl Ecr {
     pub fn new(account: Rc<Account>) -> Self {
         Self { account }
     }
 
-    /// `GetAuthorizationToken`: the registry's host and its credential.
-    pub fn authorization(&self) -> Result<RegistryAuth, AwsError> {
+    fn request(&self, action: &str, body: &serde_json::Value) -> Request {
         let url = format!("https://api.ecr.{}.amazonaws.com/", self.account.region());
         let mut request = Request::new("POST", &url);
         request.headers.extend([
             ("content-type".into(), "application/x-amz-json-1.1".into()),
             (
                 "x-amz-target".into(),
-                "AmazonEC2ContainerRegistry_V20150921.GetAuthorizationToken".into(),
+                format!("AmazonEC2ContainerRegistry_V20150921.{action}"),
             ),
         ]);
-        request.body = b"{}".to_vec();
+        request.body = body.to_string().into_bytes();
+        request
+    }
+
+    /// `DescribeImages` of `digest` (`sha256:<hex>`) in `repository` of the
+    /// registry `registry_id` (its account): whether the image is there.
+    pub fn has_image(
+        &self,
+        registry_id: &str,
+        repository: &str,
+        digest: &str,
+    ) -> Result<bool, AwsError> {
+        let body = json!({
+            "registryId": registry_id,
+            "repositoryName": repository,
+            "imageIds": [{ "imageDigest": digest }],
+        });
+        let what = format!("ECR DescribeImages {repository}@{digest}");
+        let request = self.request("DescribeImages", &body);
+        let r = self.account.send_unchecked("ecr", request, &what)?;
+        if r.status == 400 && String::from_utf8_lossy(&r.body).contains("ImageNotFoundException") {
+            return Ok(false);
+        }
+        let r = check(&what, r)?;
+        let answer: Described = serde_json::from_slice(&r.body)
+            .map_err(|_| AwsError::Failed(format!("{what}: not its answer")))?;
+        Ok(answer
+            .image_details
+            .iter()
+            .any(|d| d.image_digest == digest))
+    }
+
+    /// `GetAuthorizationToken`: the registry's host and its credential.
+    pub fn authorization(&self) -> Result<RegistryAuth, AwsError> {
+        let request = self.request("GetAuthorizationToken", &json!({}));
         let what = "ECR GetAuthorizationToken";
         let r = self.account.send("ecr", request, what)?;
         let bad = |why: &str| AwsError::Failed(format!("{what}: {why}"));
@@ -96,7 +145,7 @@ impl Ecr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aws_client::fake::{account, FakeAws};
+    use crate::fake::{account, FakeAws};
 
     #[test]
     fn the_token_gives_the_registry_and_its_credential() {
@@ -142,5 +191,46 @@ mod tests {
         let aws = FakeAws::default();
         aws.answer("POST /", 200, br#"{"authorizationData":[]}"#);
         assert!(Ecr::new(account(&aws)).authorization().is_err());
+    }
+
+    #[test]
+    fn an_image_is_looked_up_by_its_digest_in_the_registry() {
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let aws = FakeAws::default();
+        let body = format!(r#"{{"imageDetails":[{{"imageDigest":"{digest}"}}]}}"#);
+        aws.answer("POST /", 200, body.as_bytes());
+        let ecr = Ecr::new(account(&aws));
+        assert!(ecr.has_image("1", "quality-data/q/api", &digest).unwrap());
+        let sent = aws.sent.borrow();
+        assert_eq!(
+            sent[0].header("x-amz-target"),
+            Some("AmazonEC2ContainerRegistry_V20150921.DescribeImages")
+        );
+        let asked: serde_json::Value = serde_json::from_slice(&sent[0].body).unwrap();
+        assert_eq!(
+            asked,
+            json!({"registryId": "1", "repositoryName": "quality-data/q/api",
+                   "imageIds": [{"imageDigest": digest}]})
+        );
+
+        let aws = FakeAws::default();
+        aws.answer(
+            "POST /",
+            400,
+            br#"{"__type":"ImageNotFoundException","message":"none"}"#,
+        );
+        assert!(!Ecr::new(account(&aws))
+            .has_image("1", "r", &digest)
+            .unwrap());
+        let aws = FakeAws::default();
+        aws.answer(
+            "POST /",
+            400,
+            br#"{"__type":"RepositoryNotFoundException","message":"none"}"#,
+        );
+        let err = Ecr::new(account(&aws))
+            .has_image("1", "r", &digest)
+            .unwrap_err();
+        assert!(matches!(&err, AwsError::Failed(m) if m.contains("RepositoryNotFound")));
     }
 }

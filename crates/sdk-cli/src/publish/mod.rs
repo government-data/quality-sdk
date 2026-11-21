@@ -5,7 +5,8 @@
 //! 1. The published index is read and must verify with the index key (none
 //!    yet is sequence 0); the version must not be in it.
 //! 2. The next index (sequence + 1) is built and checked by the index's own
-//!    rules before anything is written.
+//!    rules before anything is written, and every image it names must be
+//!    in the installations' ECR registry by digest ([`images`]).
 //! 3. Each module's package is uploaded, or kept when the same bytes are
 //!    there; other bytes under its key are refused.
 //! 4. KMS signs the SHA-256 of the index (`MessageType=DIGEST`); the
@@ -15,6 +16,7 @@
 //!
 //! Every step can run again: a failed publication is published again.
 
+pub mod images;
 pub mod input;
 
 use aws_client::client::{AwsError, Bucket};
@@ -24,6 +26,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use index_model::{Channel, Index, IndexKey, FORMAT};
 use sha2::{Digest, Sha256};
 
+use images::Registry;
 use input::Release;
 
 /// Where indexes and packages are read and written: the release bucket.
@@ -89,6 +92,7 @@ fn published(store: &dyn Store, channel: Channel, key: &IndexKey) -> Result<Opti
 pub fn publish(
     store: &dyn Store,
     signer: &dyn DigestSigner,
+    registry: &dyn Registry,
     key: &IndexKey,
     channel: Channel,
     release: Release,
@@ -111,6 +115,8 @@ pub fn publish(
     };
     let bytes = serde_json::to_vec_pretty(&next).map_err(|e| e.to_string())?;
     Index::parse(&bytes).map_err(|e| format!("{version} cannot be published: {e}"))?;
+    let added = next.versions.last().ok_or("no version to publish")?;
+    images::check(registry, added)?;
 
     let (mut uploaded, mut kept) = (Vec::new(), Vec::new());
     for p in release.packages {

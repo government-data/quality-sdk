@@ -8,6 +8,7 @@
 
 pub mod client;
 pub mod credentials;
+pub mod ecr;
 pub mod fake;
 pub mod http;
 pub mod kms;
