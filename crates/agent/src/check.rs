@@ -2,8 +2,10 @@
 //! sees it, changing nothing an update uses. It trades the enrolment
 //! certificate for credentials, reads and verifies the signed index, says
 //! what it offers, asks the registry for its credential and writes one
-//! report of kind `check` under `reports/<installation>/`. It downloads no
-//! package, pulls no image and publishes nothing.
+//! report of kind `check` under `reports/<installation>/`. It pulls no
+//! image and publishes nothing; with `download`, it also downloads each
+//! package of the offer and keeps it only when its SHA-256 is the index's,
+//! as an update's preparation does.
 
 use chrono::Utc;
 use updater::engine::CloudError;
@@ -13,10 +15,11 @@ use crate::aws::cloud::AwsCloud;
 use crate::aws::index::{channel_name, offer};
 use crate::aws::reports::{Report, FORMAT};
 use crate::config::Config;
+use crate::host::Cloud;
 use crate::paths::Paths;
 
 /// Each step's result, printed as it goes; the first failure ends it.
-pub fn run(paths: &Paths, installed: Option<&str>) -> Result<(), String> {
+pub fn run(paths: &Paths, installed: Option<&str>, download: bool) -> Result<(), String> {
     let config = Config::load(&paths.config_file())?;
     println!("settings        {}", paths.config_file().display());
     let cloud = AwsCloud::from_config(&config, paths)?;
@@ -55,6 +58,20 @@ pub fn run(paths: &Paths, installed: Option<&str>) -> Result<(), String> {
             o.version,
             modules.join(", ")
         );
+    }
+
+    if download {
+        for p in &o.packages {
+            let path = cloud
+                .download_package(&o, p)
+                .map_err(|e| format!("package of {}: {e}", p.module))?;
+            println!(
+                "package         {} {}, SHA-256 verified, kept at {}",
+                p.module,
+                p.key,
+                path.display()
+            );
+        }
     }
 
     let auth = cloud.ecr.authorization().map_err(|e| format!("ECR: {e}"))?;
