@@ -20,6 +20,7 @@ dependencies = [
  "index-model",
  "module-manifest",
  "p256",
+ "rand_core",
  "rcgen",
  "rustls",
  "semver",

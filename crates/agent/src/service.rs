@@ -4,6 +4,8 @@
 //! (none: a new state at the installed version) and advances the engine
 //! as the service until it has nothing to do now, then waits. The engine
 //! asks the cloud every hour by itself, sooner on an "Update now".
+//! Before each round the agent renews its certificate for the `internal`
+//! entry point when less than 30 days are left ([`renewer`]).
 
 use std::fs::File;
 use std::path::Path;
@@ -12,7 +14,9 @@ use std::time::Duration;
 use updater::engine::{advance, Host, Who};
 use updater::state::State;
 
-use crate::api::UpdaterApi;
+use crate::api::internal_files::InternalFiles;
+use crate::api::renew::{Renewal, Renewer};
+use crate::api::{tls, UpdaterApi};
 use crate::aws::cloud::AwsCloud;
 use crate::compose::DockerCompose;
 use crate::config::Config;
@@ -43,6 +47,32 @@ pub fn assemble(paths: &Paths) -> Result<AgentHost, String> {
         clock: Box::new(SystemClock),
     };
     Ok(AgentHost::new(adapters, paths.state_file()))
+}
+
+/// The renewal of the agent's certificate for the `internal` entry point,
+/// through the API the settings name.
+pub fn renewer(paths: &Paths) -> Result<Renewer, String> {
+    let config = Config::load(&paths.config_file())?;
+    let api = config
+        .api
+        .ok_or_else(|| format!("{}: no [api] url", paths.config_file().display()))?;
+    let files = InternalFiles::new(paths);
+    let transport = tls::Internal::new(files.clone(), api.connect)?;
+    Ok(Renewer::new(&api.url, Box::new(transport), files))
+}
+
+/// Renew when due, and say what happened; a failure is tried again at the
+/// next round (the certificate in use keeps working meanwhile).
+pub fn renew(renewer: &Renewer, now: chrono::DateTime<chrono::Utc>) {
+    match renewer.renew_if_due(now) {
+        Ok(Renewal::NotDue { not_after }) => {
+            tracing::debug!(%not_after, "the internal certificate is not due for renewal");
+        }
+        Ok(Renewal::Renewed { not_after }) => {
+            tracing::info!(%not_after, "the internal certificate was renewed");
+        }
+        Err(err) => tracing::warn!("the internal certificate could not be renewed: {err}"),
+    }
 }
 
 /// The agent's lock, held while it lives: one agent per installation.
@@ -87,8 +117,20 @@ pub fn round(host: &dyn Host, state_file: &Path) -> Result<(), String> {
 /// Rounds, `every` apart, `rounds` of them (`None`: for as long as it
 /// lives). A round that fails is logged; the next one runs.
 pub fn run(host: &dyn Host, state_file: &Path, every: Duration, rounds: Option<u64>) {
+    run_with(host, state_file, every, rounds, &mut || ());
+}
+
+/// [`run`], doing `before` ahead of each round (the certificate's renewal).
+pub fn run_with(
+    host: &dyn Host,
+    state_file: &Path,
+    every: Duration,
+    rounds: Option<u64>,
+    before: &mut dyn FnMut(),
+) {
     let mut done = 0;
     loop {
+        before();
         if let Err(err) = round(host, state_file) {
             tracing::error!("the round failed: {err}");
         }

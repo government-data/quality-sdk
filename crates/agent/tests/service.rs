@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use agent::api::UpdaterApi;
 use agent::host::{Adapters, AgentHost, Clock, Cloud, Compose, Database, Packages};
-use agent::service::{round, run};
+use agent::service::{round, run, run_with};
 use aws_client::http::Https;
 use chrono::{DateTime, TimeZone, Utc};
 use updater::engine::{CloudError, Installed, Offer, OfferedPackage};
@@ -219,5 +219,18 @@ fn a_round_that_fails_is_logged_and_the_next_one_runs() {
     *fakes.0.installed.borrow_mut() = Some("1.2.0".into());
     run(&host, &file, Duration::from_secs(5), Some(1));
     assert_eq!(fakes.0.checked.get(), 1);
+    std::fs::remove_dir_all(file.ancestors().nth(4).unwrap()).unwrap();
+}
+
+#[test]
+fn each_round_is_preceded_by_the_chores_before_it() {
+    let file = state_file("before");
+    let (host, fakes, _) = host(&file, Some("1.2.0"));
+    let mut before = Vec::new();
+    run_with(&host, &file, Duration::from_secs(60), Some(3), &mut || {
+        before.push(fakes.0.waited.borrow().len());
+    });
+    // Before the first round, and after each wait.
+    assert_eq!(before, [0, 1, 2]);
     std::fs::remove_dir_all(file.ancestors().nth(4).unwrap()).unwrap();
 }
