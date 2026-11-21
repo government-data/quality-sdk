@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use agent::config::Config;
 use agent::paths::Paths;
@@ -14,13 +15,18 @@ commands:
   check     check the AWS side end to end: credentials, the signed index,
             the registry and one report of kind `check` (no image is
             pulled, nothing published; packages only with --download)
+  run       the agent as a service: run the update engine with the real
+            host in rounds, until stopped (needs [api] in agent.toml)
 
 options:
   --root DIR           the installation's paths under DIR (development)
   --installed VERSION  for check: the version to ask an offer for (default:
                        the state file's, or 0.0.0)
   --download           for check: download each package of the offer and
-                       check its SHA-256";
+                       check its SHA-256
+  --every SECS         for run: how long a round waits for the next (default
+                       60; the cloud is asked every hour)
+  --once               for run: one round, then exit";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -28,6 +34,8 @@ fn main() -> ExitCode {
     let mut command = None;
     let mut installed = None;
     let mut download = false;
+    let mut every = agent::service::EVERY;
+    let mut once = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--root" => match args.next() {
@@ -39,6 +47,11 @@ fn main() -> ExitCode {
                 None => return usage("--installed needs a version"),
             },
             "--download" => download = true,
+            "--every" => match args.next().and_then(|s| s.parse::<u64>().ok()) {
+                Some(secs) if secs > 0 => every = Duration::from_secs(secs),
+                _ => return usage("--every needs a number of seconds above 0"),
+            },
+            "--once" => once = true,
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return ExitCode::SUCCESS;
@@ -63,6 +76,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some("run") => run(&paths, every, once),
         Some(other) => usage(&format!("unknown command {other:?}")),
         None => usage("a command is needed"),
     }
@@ -89,4 +103,31 @@ fn config(paths: &Paths) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The agent as a service: its lock, the real host, rounds until stopped.
+fn run(paths: &Paths, every: Duration, once: bool) -> ExitCode {
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_max_level(tracing::Level::INFO)
+        .init();
+    let started = agent::service::lock(paths).and_then(|lock| {
+        let host = agent::service::assemble(paths)?;
+        Ok((lock, host))
+    });
+    let (_lock, host) = match started {
+        Ok(started) => started,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        every_secs = every.as_secs(),
+        "quality-data-agent runs"
+    );
+    let rounds = once.then_some(1);
+    agent::service::run(&host, &paths.state_file(), every, rounds);
+    ExitCode::SUCCESS
 }
