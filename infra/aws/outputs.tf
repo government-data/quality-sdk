@@ -42,3 +42,8 @@ output "enrolment_officers_group" {
   description = "The IAM group whose members may revoke installations (`quality-sdk revoke`)."
   value       = aws_iam_group.enrolment_officers.name
 }
+
+output "module_publish_role_arns" {
+  description = "Per module, the role its repository's CI assumes on a v* tag to push its images (repository variable AWS_PUBLISH_ROLE)."
+  value       = { for m, r in aws_iam_role.module_publish : m => r.arn }
+}

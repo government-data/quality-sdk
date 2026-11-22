@@ -82,3 +82,29 @@ variable "report_retention_days" {
   type        = number
   default     = 400
 }
+
+variable "module_publishers" {
+  description = <<-EOT
+    The GitHub repository whose v* tags push each module's images (decision
+    0002 step 15): one role <project>-publish-<module> each, which may push
+    only to the module's repositories named in `images` (the images it
+    builds; mirrored third-party images are not the module role's) and has
+    no S3 or KMS right. `ids` are the owner and repository ids for GitHub's
+    immutable OIDC subject; null: the subject by name only.
+  EOT
+  type = map(object({
+    repo   = string
+    images = list(string)
+    ids = optional(object({
+      owner = number
+      repo  = number
+    }))
+  }))
+  default = {
+    "quality-data" = { repo = "quality-data/core", images = ["api", "web"] }
+  }
+  validation {
+    condition     = alltrue([for m, p in var.module_publishers : contains(keys(var.modules), m) && length(split("/", p.repo)) == 2 && length(setsubtract(p.images, lookup(var.modules, m, []))) == 0])
+    error_message = "Each module_publishers key must be a module of var.modules, repo must be owner/name, and images must be that module's images."
+  }
+}

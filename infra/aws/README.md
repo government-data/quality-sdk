@@ -26,6 +26,21 @@ AWS_PROFILE=orquestador terraform apply core.plan
 The state is local until the remote one exists (decision 0001, Open); it holds
 no secret, but keep a copy.
 
+## A module repository's CI pushes its images
+
+Each entry of `module_publishers` (by default `quality-data` →
+`quality-data/core`, images `api` and `web`) gets a role
+`quality-data-publish-<module>` that GitHub Actions assumes on a `v*` tag of
+that repository; it may push only to those ECR repositories. After applying, a
+person sets two repository variables (Settings → Secrets and variables →
+Actions → Variables; an ARN is not a secret) in each module repository:
+
+```bash
+gh variable set AWS_PUBLISH_ROLE --repo quality-data/core \
+  --body "$(terraform -chdir=infra/aws output -json module_publish_role_arns | jq -r '."quality-data"')"
+gh variable set AWS_REGION --repo quality-data/core --body us-east-1
+```
+
 ## Verify Roles Anywhere (a person, after applying)
 
 ```bash
