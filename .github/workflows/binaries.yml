@@ -1,0 +1,64 @@
+# Release binaries for a server (decision 0004 step 7): `quality-data-agent`
+# and `quality-sdk` built in release on Ubuntu 24.04 (glibc), so they name
+# the system's loader. Uploaded as workflow artifacts, which expire by
+# themselves; no release is published. Public repository: GitHub-hosted
+# runners only, read-only token, no AWS credentials.
+name: binaries
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - ".github/workflows/binaries.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: binaries-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release
+      - run: cargo build --release --locked -p agent -p sdk-cli
+      - name: Check that they name the system's loader
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for bin in quality-data-agent quality-sdk; do
+            cp "target/release/$bin" "dist/$bin"
+            file "dist/$bin" | tee "dist/$bin.file"
+            ldd "dist/$bin" | tee "dist/$bin.ldd"
+            grep -q 'interpreter /lib64/ld-linux-x86-64.so.2' "dist/$bin.file"
+            if grep -q '/nix/store' "dist/$bin.file" "dist/$bin.ldd" ||
+              grep -q 'not found' "dist/$bin.ldd"; then
+              echo "::error::$bin does not run on a plain Ubuntu" >&2
+              exit 1
+            fi
+            "dist/$bin" --help >/dev/null
+          done
+          (cd dist && sha256sum quality-data-agent quality-sdk | tee SHA256SUMS)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binaries-${{ github.sha }}
+          path: |
+            dist/quality-data-agent
+            dist/quality-sdk
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
