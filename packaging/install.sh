@@ -6,10 +6,10 @@
 #   sudo packaging/install.sh --installation ID --bucket NAME \
 #     --trust-anchor-arn ARN --profile-arn ARN --role-arn ARN \
 #     --index-key index-key.pem --domain APP_DOMAIN --machine-name NAME \
-#     --acme-email ADDRESS \
 #     --agent ./quality-data-agent --sdk ./quality-sdk \
 #     [--certificate signed.pem] [--channel stable] [--region us-east-1] \
 #     [--signing-helper FILE] [--version V] [--updater-name NAME] \
+#     [--tls-mode file|acme] [--tls-cert FILE --tls-key FILE] [--acme-email ADDRESS] \
 #     [--install-docker] [--root DIR]
 #
 # 1. Docker and the system-wide Compose plugin, at least Docker Engine
@@ -29,9 +29,14 @@
 #    (core decisions 0080, 0081, 0082): .env (0600), secrets/ (the database
 #    URL for the API's user, uid 65532; PostgreSQL's password for its user,
 #    uid 70), certs/ (Traefik's default certificate, self-signed), ca/,
-#    internal/ and machine/. --acme-email is Let's Encrypt's contact
-#    (ACME_EMAIL, which the core's compose requires); a run with another
-#    address changes only that line of an existing .env.
+#    internal/ and machine/. The web's certificate (core decision 0087),
+#    QD_TLS_MODE: `file` (the default) serves certs/local.crt, the
+#    certificate of --tls-cert and --tls-key (their public keys must match)
+#    or, without them, a self-signed one; `acme` is Let's Encrypt by
+#    HTTP-01 (public DNS for --domain, port 80 open), and needs
+#    --acme-email, its contact. A run with other values changes only those
+#    lines of an existing .env; on an installed server Traefik is then
+#    recreated.
 # 7. `quality-data-agent install`, three runs (decision 0006), with the
 #    core's first-start commands between them (core decision 0082): after
 #    prepare (exit 4) `ca-init`, `up -d postgres` without waiting and
@@ -75,17 +80,43 @@ done
 for k in "${!A[@]}"; do
   case "$k" in
   installation | channel | region | bucket | trust-anchor-arn | profile-arn | role-arn | index-key | \
-    certificate | domain | machine-name | acme-email | agent | sdk | signing-helper | version | updater-name | \
+    certificate | domain | machine-name | tls-mode | tls-cert | tls-key | acme-email | agent | sdk | signing-helper | \
+    version | updater-name | \
     install-docker | root) ;;
   *) die "unknown option --$k" ;;
   esac
 done
-for k in installation bucket trust-anchor-arn profile-arn role-arn domain machine-name acme-email; do
+for k in installation bucket trust-anchor-arn profile-arn role-arn domain machine-name; do
   [[ -n "${A[$k]:-}" ]] || die "--$k is required (--help)"
 done
 [[ "${A[channel]}" =~ ^(stable|patch)$ ]] || die "--channel is stable or patch"
-[[ "${A[acme-email]}" =~ ^[^@[:space:]=]+@[^@[:space:]=]+\.[^@[:space:]=]+$ ]] ||
-  die "--acme-email is not an e-mail address (Let's Encrypt's contact)"
+TLS_MODE="${A[tls-mode]:-file}"
+case "$TLS_MODE" in
+file)
+  [[ -z "${A[acme-email]:-}" ]] || die "--acme-email is for --tls-mode acme only"
+  if [[ -n "${A[tls-cert]:-}${A[tls-key]:-}" ]]; then
+    [[ -n "${A[tls-cert]:-}" && -n "${A[tls-key]:-}" ]] || die "--tls-cert and --tls-key go together"
+  fi
+  ;;
+acme)
+  [[ -z "${A[tls-cert]:-}${A[tls-key]:-}" ]] || die "--tls-cert and --tls-key are for --tls-mode file only"
+  [[ -n "${A[acme-email]:-}" ]] || die "--tls-mode acme needs --acme-email (Let's Encrypt's contact)"
+  email_re='^[^@[:space:]="\|&]+@[^@[:space:]="\|&]+\.[^@[:space:]="\|&]+$'
+  [[ "${A[acme-email]}" =~ $email_re ]] || die "--acme-email is not an e-mail address (Let's Encrypt's contact)"
+  ;;
+*) die "--tls-mode is file or acme" ;;
+esac
+if [[ -n "${A[tls-cert]:-}" ]]; then
+  [[ -f "${A[tls-cert]}" && -f "${A[tls-key]}" ]] || die "--tls-cert or --tls-key does not exist"
+  cert_pub="$(openssl x509 -in "${A[tls-cert]}" -noout -pubkey 2>/dev/null)" ||
+    die "--tls-cert is not a PEM certificate"
+  # A key with a passphrase is refused too: Traefik could not read it.
+  key_pub="$(openssl pkey -in "${A[tls-key]}" -passin pass: -pubout 2>/dev/null)" ||
+    die "--tls-key is not a PEM private key without a passphrase"
+  [[ "$cert_pub" == "$key_pub" ]] || die "--tls-key is not the key of --tls-cert"
+  openssl x509 -in "${A[tls-cert]}" -noout -checkhost "${A[domain]}" 2>/dev/null | grep -q 'does match' ||
+    echo "warning: --tls-cert does not name --domain ${A[domain]}" >&2
+fi
 [[ "${A[installation]}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "--installation is not an id"
 
 ROOT="${A[root]:-}"
@@ -220,7 +251,8 @@ IMAGE_TRAEFIK=
 IMAGE_POSTGRES=
 APP_DOMAIN=${A[domain]}
 INTERNAL_DOMAIN=${A[machine-name]}
-ACME_EMAIL=${A[acme-email]}
+QD_TLS_MODE=$TLS_MODE
+ACME_EMAIL=${A[acme-email]:-}
 OBS_VM=${A[machine-name]}
 TRAEFIK_INTERNAL_PORT=9443
 TRAEFIK_LAKEGATE_PORT=9444
@@ -246,11 +278,16 @@ if [[ ! -f "$MOD/.env" ]]; then
   chmod 0600 "$MOD/.env.new" && mv -f "$MOD/.env.new" "$MOD/.env"
 fi
 env_value() { sed -n "s/^$1=//p" "$MOD/.env" | tail -1; }
-if [[ "$(env_value ACME_EMAIL)" != "${A[acme-email]}" ]]; then
-  say "setting ACME_EMAIL in $MOD/.env"
-  { grep -v '^ACME_EMAIL=' "$MOD/.env"; echo "ACME_EMAIL=${A[acme-email]}"; } >"$MOD/.env.new"
+TLS_CHANGED=""
+set_env() { # set_env KEY VALUE: that line of an existing .env
+  [[ "$(env_value "$1")" != "$2" || "$(grep -c "^$1=" "$MOD/.env")" != 1 ]] || return 0
+  say "setting $1 in $MOD/.env"
+  { grep -v "^$1=" "$MOD/.env"; echo "$1=$2"; } >"$MOD/.env.new"
   chmod 0600 "$MOD/.env.new" && mv -f "$MOD/.env.new" "$MOD/.env"
-fi
+  TLS_CHANGED=yes
+}
+set_env QD_TLS_MODE "$TLS_MODE"
+set_env ACME_EMAIL "${A[acme-email]:-}"
 if [[ ! -f "$MOD/secrets/postgres_superuser_password" ]]; then
   env_value POSTGRES_SUPERUSER_PASSWORD >"$MOD/secrets/postgres_superuser_password"
 fi
@@ -262,8 +299,18 @@ fi
 chmod 0400 "$MOD/secrets/postgres_superuser_password" "$MOD/secrets/database_url"
 own "$PG_UID" "$MOD/secrets/postgres_superuser_password"
 own "$APP_UID" "$MOD/secrets/database_url"
-if [[ ! -f "$MOD/certs/local.crt" ]]; then
-  # Traefik's default certificate, self-signed: no ACME without public DNS.
+if [[ -n "${A[tls-cert]:-}" ]]; then
+  # The customer's certificate (checked above), aside then renamed.
+  if ! cmp -s "${A[tls-cert]}" "$MOD/certs/local.crt" || ! cmp -s "${A[tls-key]}" "$MOD/certs/local.key"; then
+    say "installing the certificate of --tls-cert as Traefik's"
+    install -m 0600 "${A[tls-key]}" "$MOD/certs/.local.key.new"
+    install -m 0644 "${A[tls-cert]}" "$MOD/certs/.local.crt.new"
+    mv -f "$MOD/certs/.local.key.new" "$MOD/certs/local.key"
+    mv -f "$MOD/certs/.local.crt.new" "$MOD/certs/local.crt"
+    TLS_CHANGED=yes
+  fi
+elif [[ ! -f "$MOD/certs/local.crt" ]]; then
+  # Traefik's default certificate, self-signed, until the customer's.
   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 825 \
     -subj "/CN=${A[domain]}" -addext "subjectAltName=DNS:${A[domain]}" \
     -keyout "$MOD/certs/local.key" -out "$MOD/certs/local.crt" 2>/dev/null
@@ -338,6 +385,10 @@ catch_up() {
 
 if [[ -f "$VAR/updater/installed.json" && ! -f "$VAR/updater/install.json" ]]; then
   say "already installed: the agent updates it"
+  if [[ -n "$TLS_CHANGED" ]]; then
+    say "recreating Traefik for the web's new certificate"
+    pkg up --detach --no-build --force-recreate traefik || fail "could not recreate Traefik"
+  fi
 else
   catch_up
   args=(install)
