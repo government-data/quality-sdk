@@ -19,9 +19,11 @@
 #   5. `updater/v1`: `GET /updater/v1/version` with the agent's internal
 #      certificate (mTLS, `[api] connect` honoured).
 #   6. `quality-data-agent run --once`: `PUT /updater/v1/modules` (no
-#      warning that quality-data was not told), and the renewal of the
-#      internal certificate when it is due (less than 30 days left;
-#      otherwise SKIP: forcing it is decision 0004's Open item).
+#      warning that quality-data was not told).
+#   7. `quality-data-agent renew --force` (decision 0007 point 4): the
+#      internal certificate renewed through the core however much is left
+#      (its serial changes), and `GET /updater/v1/version` answered with
+#      the renewed one.
 #
 # The service is stopped while it runs (one agent holds the lock) and
 # started again on exit, also on failure. The report of kind `check` stays
@@ -44,6 +46,7 @@ INTERNAL=/etc/quality-data/internal
 RUN="qs-verify-installation-$(date -u +%Y%m%dt%H%M%Sz)-$RANDOM"
 WORK="$(mktemp -d)"
 WAS_ACTIVE=0
+RENEWED=""
 FAILED=0
 RESULTS=()
 
@@ -147,9 +150,12 @@ if systemctl is-active --quiet quality-data-agent.service; then
   WAS_ACTIVE=1
   systemctl stop quality-data-agent.service
 fi
-NOT_AFTER="$(openssl x509 -in "$INTERNAL/certificate.pem" -noout -enddate 2>/dev/null | cut -d= -f2 || true)"
-DUE=0
-openssl x509 -in "$INTERNAL/certificate.pem" -noout -checkend $((30 * 86400)) >/dev/null 2>&1 || DUE=1
+# The internal certificate's serial and end, or nothing.
+serial() {
+  openssl x509 -in "$INTERNAL/certificate.pem" -noout -serial -enddate 2>/dev/null |
+    sed 's/^[a-zA-Z]*=//' | paste -sd' ' || true
+}
+BEFORE="$(serial)"
 
 cat >"$WORK/inside.sh" <<'EOF'
 set -u
@@ -179,6 +185,12 @@ echo "RUN $?"
 say "run --once tells quality-data the modules (PUT /updater/v1/modules)" \
   '! grep -q "was not told the installed modules" /tmp/run.log'
 grep -o "the internal certificate .*" /tmp/run.log | sed "s/^/LOG  /"
+"$AGENT" renew --force >/tmp/renew.log 2>&1
+echo "RENEW $? $(tail -1 /tmp/renew.log | cut -c1-200)"
+say "updater/v1 GET /version with the renewed certificate" '
+  I=/etc/quality-data/internal
+  curl -sf --max-time 30 ${CONNECT_TO:+--connect-to "$CONNECT_TO"} --cacert "$I/ca.pem" \
+    --cert "$I/certificate.pem" --key "$I/private-key.pem" "$API_URL/updater/v1/version"'
 EOF
 
 systemd-run --wait --pipe --quiet --collect --unit "$RUN" "${PROPS[@]}" \
@@ -194,18 +206,20 @@ while IFS= read -r line; do
   "RUN 0") record PASS "quality-data-agent run --once inside the sandbox" ;;
   RUN\ *) record FAIL "quality-data-agent run --once inside the sandbox" "exit ${line#RUN }" ;;
   LOG\ \ *) echo "${line#LOG  }" ;;
+  RENEW\ *) RENEWED="${line#RENEW }" ;;
   esac
 done <"$WORK/inside.log"
 grep -q '^PASS\|^FAIL' "$WORK/inside.log" ||
   record FAIL "the sandboxed service ran" "$(tail -3 "$WORK/inside.log" | tr '\n' ' ')"
 
-AFTER="$(openssl x509 -in "$INTERNAL/certificate.pem" -noout -enddate 2>/dev/null | cut -d= -f2 || true)"
-if ((!DUE)); then
-  record SKIP "the internal certificate's renewal" "not due: it ends $NOT_AFTER, more than 30 days away"
-elif [[ -n "$AFTER" && "$AFTER" != "$NOT_AFTER" ]]; then
-  record PASS "the internal certificate was renewed inside the sandbox" "$NOT_AFTER -> $AFTER"
+AFTER="$(serial)"
+what="quality-data-agent renew --force inside the sandbox"
+if [[ "${RENEWED:-}" != 0\ * ]]; then
+  record FAIL "$what" "exit ${RENEWED:-not run}"
+elif [[ -n "$AFTER" && "${AFTER%% *}" != "${BEFORE%% *}" ]]; then
+  record PASS "$what" "serial and end ${BEFORE:-unreadable} -> $AFTER"
 else
-  record FAIL "the internal certificate was renewed inside the sandbox" "still ends ${AFTER:-unreadable}"
+  record FAIL "$what" "the serial did not change (${AFTER:-unreadable})"
 fi
 
 # --- Summary --------------------------------------------------------------
