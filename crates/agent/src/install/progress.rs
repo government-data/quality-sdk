@@ -13,6 +13,9 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum Step {
     Prepare,
+    /// Prepared, stopped for the module's first-start commands; the next
+    /// run starts.
+    Prepared,
     Start,
     Verify,
 }

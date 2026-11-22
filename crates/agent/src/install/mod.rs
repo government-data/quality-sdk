@@ -15,9 +15,10 @@
 //! The install is reported once it is done, and when it fails after a
 //! version was chosen (decision 0004).
 //!
-//! It runs in two phases: without the internal certificate it stops after
-//! the start ([`Done::NeedsCertificate`]), so the installer can issue it
-//! against the started database and run it again. No backup and no drain:
+//! It stops twice (decision 0006), each time for the installer to run a
+//! module's own commands and run it again: after prepare, before anything
+//! starts ([`Done::Prepared`]), and after the start while the internal
+//! certificate is missing ([`Done::NeedsCertificate`]). No backup and no drain:
 //! there is no data yet. It refuses an installation installed before
 //! (`installed.json` without `install.json`); a failure leaves the modules
 //! as they are and says the step it stopped at.
@@ -64,6 +65,9 @@ pub trait Installer {
 /// How a run of `install` ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Done {
+    /// Prepared, nothing started: run the module's first-start commands,
+    /// then run it again.
+    Prepared { version: String },
     /// Installed and answering.
     Installed { version: String },
     /// Started; the internal certificate is missing. Run it again once it
@@ -112,7 +116,7 @@ pub fn install(i: &dyn Installer, files: &Files, version: Option<&str>) -> Resul
     let done = steps(i, files, p, offer);
     match &done {
         Ok(Done::Installed { .. }) => i.report(&version, None),
-        Ok(Done::NeedsCertificate { .. }) => {}
+        Ok(Done::Prepared { .. } | Done::NeedsCertificate { .. }) => {}
         Err(err) => i.report(&version, Some(err)),
     }
     done
@@ -135,8 +139,11 @@ fn steps(
                         .map_err(|e| stopped("prepare", &cloud(e)))?,
                 };
                 prepare(i, &o).map_err(|e| stopped("prepare", &e))?;
-                p.step = Step::Start;
+                p.step = Step::Prepared;
+                p.save(&files.progress)?;
+                return Ok(Done::Prepared { version: p.version });
             }
+            Step::Prepared => p.step = Step::Start,
             Step::Start => {
                 i.start().map_err(|e| stopped("start", &e))?;
                 p.step = Step::Verify;
