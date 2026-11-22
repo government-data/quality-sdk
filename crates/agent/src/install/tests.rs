@@ -134,10 +134,31 @@ const PREPARE: [&str; 7] = [
     "put_version 1.0.0 quality-data,reports",
 ];
 
+/// Run it again past the stop after prepare, as the installer does.
+fn past_prepared(fake: &Fake, files: &Files) -> Result<Done, String> {
+    match install(fake, files, None) {
+        Ok(Done::Prepared { .. }) => install(fake, files, None),
+        other => other,
+    }
+}
+
 #[test]
-fn a_fresh_install_goes_to_the_end_and_removes_its_progress() {
+fn a_fresh_install_stops_after_prepare_then_goes_to_the_end() {
     let (fake, files, dir) = setup("fresh");
     fake.certificate.set(true);
+    let done = install(&fake, &files, None).unwrap();
+    assert_eq!(
+        done,
+        Done::Prepared {
+            version: "1.0.0".into()
+        }
+    );
+    assert_eq!(fake.calls(), PREPARE);
+    assert_eq!(
+        Progress::load(&files.progress).unwrap().unwrap().step,
+        Step::Prepared
+    );
+    // The next run starts, without preparing again.
     let done = install(&fake, &files, None).unwrap();
     assert_eq!(
         done,
@@ -145,9 +166,10 @@ fn a_fresh_install_goes_to_the_end_and_removes_its_progress() {
             version: "1.0.0".into()
         }
     );
-    let mut expected = PREPARE.to_vec();
-    expected.extend(["start ", "healthy 1.0.0", "tell_modules ", "report 1.0.0"]);
-    assert_eq!(fake.calls(), expected);
+    assert_eq!(
+        fake.calls(),
+        ["start ", "healthy 1.0.0", "tell_modules ", "report 1.0.0"]
+    );
     assert!(!files.progress.exists() && files.installed.exists());
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -155,7 +177,8 @@ fn a_fresh_install_goes_to_the_end_and_removes_its_progress() {
 #[test]
 fn without_the_internal_certificate_it_stops_after_the_start_and_resumes() {
     let (fake, files, dir) = setup("certificate");
-    let done = install(&fake, &files, Some("1.0.0")).unwrap();
+    install(&fake, &files, Some("1.0.0")).unwrap();
+    let done = install(&fake, &files, None).unwrap();
     assert_eq!(
         done,
         Done::NeedsCertificate {
@@ -202,7 +225,7 @@ fn a_failure_or_a_crash_at_any_step_says_where_and_a_second_run_resumes_there() 
         let (fake, files, dir) = setup(fail);
         fake.certificate.set(true);
         *fake.fail_once.borrow_mut() = Some(fail);
-        match install(&fake, &files, None) {
+        match past_prepared(&fake, &files) {
             // A report that cannot be written does not stop the install.
             Ok(done) => assert!(fail == "report" && matches!(done, Done::Installed { .. })),
             Err(err) => assert!(
@@ -213,7 +236,7 @@ fn a_failure_or_a_crash_at_any_step_says_where_and_a_second_run_resumes_there() 
         }
         fake.calls();
         assert!(
-            matches!(install(&fake, &files, None), Ok(Done::Installed { .. })) || fail == "report"
+            matches!(past_prepared(&fake, &files), Ok(Done::Installed { .. })) || fail == "report"
         );
         let calls = fake.calls();
         // The resumed run begins where the failed one stopped (a crash

@@ -17,8 +17,10 @@ commands:
             pulled, nothing published; packages only with --download)
   install   lay out the first platform version (decision 0004): choose,
             prepare, start; once the internal certificate exists, verify.
-            Exit status 3: started, the internal certificate is missing;
-            run it again once it is issued
+            Exit status 4: prepared, nothing started; run the module's
+            first-start commands, then install again. Exit status 3:
+            started, the internal certificate is missing; run it again
+            once it is issued
   run       the agent as a service: run the update engine with the real
             host in rounds, until stopped (needs [api] in agent.toml)
 
@@ -132,6 +134,10 @@ fn install(paths: &Paths, version: Option<&str>) -> ExitCode {
         Ok(Done::Installed { version }) => {
             println!("installed {version}");
             ExitCode::SUCCESS
+        }
+        Ok(Done::Prepared { version }) => {
+            println!("{version} prepared, nothing started: run the first-start commands, then run install again");
+            ExitCode::from(4)
         }
         Ok(Done::NeedsCertificate { version }) => {
             println!(
