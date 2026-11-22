@@ -158,6 +158,11 @@ impl PlatformVersion {
             return Err(invalid(format!("{at}: pilot {p:?} is not a SHA-256")));
         }
         for (name, module) in &self.modules {
+            if RESERVED_MODULE_NAMES.contains(&name.as_str()) {
+                return Err(invalid(format!(
+                    "{at}: the module name {name:?} is reserved for the agent's helper images"
+                )));
+            }
             module.validate(&format!("{at}, {name}"))?;
         }
         Ok(())
@@ -198,6 +203,10 @@ impl Module {
         Ok(())
     }
 }
+
+/// Names no module may take: ECR's `<project>/tools/*` holds the images
+/// the agent itself runs (decision 0002).
+pub const RESERVED_MODULE_NAMES: &[&str] = &["tools"];
 
 /// 64 lowercase hex characters.
 pub(crate) fn is_sha256(s: &str) -> bool {

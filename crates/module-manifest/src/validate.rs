@@ -83,9 +83,19 @@ pub(crate) fn duration_secs(text: &str) -> Option<u64> {
     (n > 0).then(|| n.checked_mul(unit)).flatten()
 }
 
+/// Names no module may take: ECR's `<project>/tools/*` holds the images
+/// the agent itself runs (decision 0002).
+pub const RESERVED_MODULE_NAMES: &[&str] = &["tools"];
+
 impl Manifest {
     pub(crate) fn validate(&self) -> Result<(), ManifestError> {
         check_name("the module", &self.name)?;
+        if RESERVED_MODULE_NAMES.contains(&self.name.as_str()) {
+            return Err(invalid(format!(
+                "the module {:?}: the name is reserved for the agent's helper images",
+                self.name
+            )));
+        }
         self.validate_capabilities()?;
         validate_health(&self.health)?;
         validate_data(&self.data)?;

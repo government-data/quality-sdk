@@ -41,6 +41,14 @@ fn unknown_fields_are_ignored_within_a_format() {
 }
 
 #[test]
+fn a_module_named_tools_is_refused() {
+    let mut p = platform("3.1.0", ">=3.0.0", 10);
+    p["modules"]["tools"] = module("tools", "3.1.0");
+    assert!(invalid(&index(3, vec![p])).contains("reserved"));
+    assert_eq!(index_model::RESERVED_MODULE_NAMES, ["tools"]);
+}
+
+#[test]
 fn an_image_by_tag_is_refused() {
     let mut p = platform("3.1.0", ">=3.0.0", 10);
     p["modules"]["quality-data"]["images"]["api"] = json!("quality-data/api:3.1.0");

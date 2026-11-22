@@ -94,6 +94,8 @@ fn an_unknown_field_a_bad_pilot_a_missing_package_or_a_bad_name_is_refused() {
     assert!(parse(&missing, &d).unwrap_err().contains("none.tar.gz"));
     let name = file("").replace("[modules.quality-data", "[modules.\"../qd\"");
     assert!(parse(&name, &d).is_err());
+    let reserved = file("").replace("[modules.quality-data", "[modules.tools");
+    assert!(parse(&reserved, &d).unwrap_err().contains("reserved"));
     assert!(parse(&file(""), Path::new("/nonexistent")).is_err());
     std::fs::remove_dir_all(d).unwrap();
 }

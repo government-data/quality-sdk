@@ -12,6 +12,8 @@ fn invalid(text: &str) -> String {
 fn names_that_cannot_be_used_are_invalid() {
     assert!(invalid("name: Docs\nversion: 0.1.0\n").contains("module"));
     assert!(invalid("name: ../x\nversion: 0.1.0\n").contains("module"));
+    assert!(invalid("name: tools\nversion: 0.1.0\n").contains("reserved"));
+    assert_eq!(module_manifest::RESERVED_MODULE_NAMES, ["tools"]);
     let cap = |c: &str| format!("name: m\nversion: 1.0.0\nprovides: {{ capabilities: [{c}] }}\n");
     assert!(invalid(&cap("{ name: Lake, version: 1, protocols: [s3] }")).contains("capability"));
     assert!(invalid(&cap("{ name: lake, version: 0, protocols: [s3] }")).contains("start at 1"));

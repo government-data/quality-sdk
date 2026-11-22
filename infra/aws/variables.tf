@@ -24,6 +24,10 @@ variable "modules" {
     "quality-data" = ["api", "web", "traefik", "postgres"]
     orchestrator   = ["api", "web"]
   }
+  validation {
+    condition     = !contains(keys(var.modules), "tools")
+    error_message = "No module may be named tools: <project>/tools/* holds the agent's helper images (tool_images)."
+  }
 }
 
 variable "tool_images" {
