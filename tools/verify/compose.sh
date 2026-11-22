@@ -23,6 +23,12 @@
 #      named volume (the data is there), and `--remove-orphans` removes a
 #      service the new version no longer has.
 #   5. `down` without `-v` keeps the named volume; `up` again finds the data.
+#   6. When `current` moves to a version whose image and compose are the
+#      same, plain `up` keeps the container and the old version's
+#      bind-mounted file; `up --force-recreate`, which the adapter runs
+#      (decision 0005), gives the new version's.
+#
+# Every other `up` is the adapter's, with `--force-recreate`.
 #
 # The project's containers, network and volume are removed on exit, also on
 # failure. Run alone: no build at the same time (AGENTS.md).
@@ -124,7 +130,7 @@ ln -s 1.0.0 "$MODULE/current"
 
 # --- 1 and 2. Up, by digest, waiting for health -----------------------------
 
-if compose up -d --no-build --remove-orphans --wait --wait-timeout 60 >"$WORK/up.log" 2>&1; then
+if compose up -d --no-build --force-recreate --remove-orphans --wait --wait-timeout 60 >"$WORK/up.log" 2>&1; then
   record PASS "up -d --wait returns once the healthcheck is healthy"
 else
   record FAIL "up -d --wait" "$(tail -1 "$WORK/up.log")"
@@ -155,7 +161,7 @@ compose exec -T app sh -c 'echo kept > /data/proof'
 # --- 4. Another version --------------------------------------------------------
 
 ln -sfn 2.0.0 "$MODULE/current"
-compose up -d --no-build --remove-orphans --wait --wait-timeout 60 >"$WORK/up2.log" 2>&1 ||
+compose up -d --no-build --force-recreate --remove-orphans --wait --wait-timeout 60 >"$WORK/up2.log" 2>&1 ||
   record FAIL "up of 2.0.0" "$(tail -1 "$WORK/up2.log")"
 if [[ "$(compose exec -T app cat /data/proof 2>/dev/null)" == kept ]]; then
   record PASS "switching current to 2.0.0 keeps the project and its named volume"
@@ -173,7 +179,7 @@ fi
 
 ln -sfn 3.0.0 "$MODULE/current"
 start=$SECONDS
-if compose up -d --no-build --remove-orphans --wait --wait-timeout 20 >"$WORK/up3.log" 2>&1; then
+if compose up -d --no-build --force-recreate --remove-orphans --wait --wait-timeout 20 >"$WORK/up3.log" 2>&1; then
   record FAIL "up -d --wait fails on a healthcheck that fails" "it returned 0"
 else
   record PASS "up -d --wait fails on a healthcheck that fails" \
@@ -190,11 +196,45 @@ fi
 ln -sfn 2.0.0 "$MODULE/current"
 compose down --timeout 1 >/dev/null 2>&1
 if [[ -z "$(compose ps -aq)" ]] &&
-  compose up -d --no-build --wait --wait-timeout 60 >/dev/null 2>&1 &&
+  compose up -d --no-build --force-recreate --wait --wait-timeout 60 >/dev/null 2>&1 &&
   [[ "$(compose exec -T app cat /data/proof 2>/dev/null)" == kept ]]; then
   record PASS "down without -v keeps the named volume; up again finds the data"
 else
   record FAIL "down without -v keeps the named volume"
+fi
+
+# --- 6. A bind-mounted file of the new version ---------------------------------
+
+compose down --timeout 1 >/dev/null 2>&1
+for v in 4.0.0 5.0.0; do
+  mkdir -p "$MODULE/$v"
+  echo "$v" >"$MODULE/$v/conf.txt"
+  cat >"$MODULE/$v/compose.yml" <<EOF
+services:
+  app:
+    image: \${IMAGE_APP}
+    command: ["sleep", "3600"]
+    stop_grace_period: 1s
+    volumes: ["./conf.txt:/conf.txt:ro"]
+EOF
+done
+conf() { compose exec -T app cat /conf.txt 2>/dev/null; }
+ln -sfn 4.0.0 "$MODULE/current"
+compose up -d --no-build --force-recreate --wait --wait-timeout 60 >/dev/null 2>&1
+ln -sfn 5.0.0 "$MODULE/current"
+compose up -d --no-build --wait --wait-timeout 60 >/dev/null 2>&1
+stale="$(conf)"
+if [[ "$stale" == 4.0.0 ]]; then
+  record PASS "plain up keeps the container and the old version's bind-mounted file" "reads $stale"
+else
+  record FAIL "plain up keeps the old version's bind-mounted file" "reads ${stale:-nothing}"
+fi
+compose up -d --no-build --force-recreate --wait --wait-timeout 60 >/dev/null 2>&1
+fresh="$(conf)"
+if [[ "$fresh" == 5.0.0 ]]; then
+  record PASS "up --force-recreate gives the new version's bind-mounted file" "reads $fresh"
+else
+  record FAIL "up --force-recreate gives the new version's bind-mounted file" "reads ${fresh:-nothing}"
 fi
 
 # --- Summary --------------------------------------------------------------

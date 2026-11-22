@@ -187,7 +187,7 @@ fn start_brings_down_what_the_version_no_longer_has_then_up_in_order() {
         running(&fake),
         [
             "lake-rustfs down --remove-orphans",
-            "quality-data up --detach --no-build --remove-orphans --wait --wait-timeout 300",
+            "quality-data up --detach --no-build --remove-orphans --force-recreate --wait --wait-timeout 300",
             "quality-data stop",
         ]
     );

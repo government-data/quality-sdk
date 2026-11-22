@@ -30,7 +30,10 @@ impl crate::host::Compose for DockerCompose {
 
     /// The modules the version no longer has go down (their volumes kept),
     /// last started first; then each module comes up in its order, waiting
-    /// for its healthchecks.
+    /// for its healthchecks. Its containers are recreated (decision 0005):
+    /// every start follows a version put (an apply, going back, a restore,
+    /// the install), and an unchanged container would keep the replaced
+    /// version's bind-mounted files.
     fn start(&self) -> Result<(), String> {
         let r = self.record_or_error()?;
         for module in r.stopping.iter().rev() {
@@ -47,6 +50,7 @@ impl crate::host::Compose for DockerCompose {
                     "--detach",
                     "--no-build",
                     "--remove-orphans",
+                    "--force-recreate",
                     "--wait",
                     "--wait-timeout",
                     &wait,
