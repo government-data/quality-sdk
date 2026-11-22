@@ -5,11 +5,12 @@
 //! certificate, which the installer issues between the two phases.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use updater::engine::{CloudError, Host, Offer, OfferedPackage};
 use updater::state::Modules;
 
-use super::{Files, Installer};
+use super::{CallError, Files, Installer};
 use crate::aws::cloud::AwsCloud;
 use crate::compose::DockerCompose;
 use crate::config::Config;
@@ -77,13 +78,28 @@ impl Installer for Adapters {
     fn internal_certificate(&self) -> bool {
         self.paths.internal_certificate().exists()
     }
-    fn healthy(&self, version: &str) -> Result<(), String> {
-        crate::service::assemble(&self.paths)?.healthy(Some(version))
+    fn healthy(&self, version: &str) -> Result<(), CallError> {
+        let host = crate::service::assemble(&self.paths).map_err(CallError::Failed)?;
+        host.healthy(Some(version)).map_err(call_error)
     }
-    fn tell_modules(&self) -> Result<(), String> {
-        crate::service::assemble(&self.paths)?.put_modules()
+    fn tell_modules(&self) -> Result<(), CallError> {
+        let host = crate::service::assemble(&self.paths).map_err(CallError::Failed)?;
+        host.put_modules().map_err(call_error)
+    }
+    fn wait(&self, d: Duration) {
+        std::thread::sleep(d);
     }
     fn report(&self, version: &str, failed: Option<&str>) {
         self.cloud.report_install(version, failed);
+    }
+}
+
+/// A `updater/v1` call's error: [`CallError::NoAnswer`] when quality-data
+/// did not answer it.
+fn call_error(err: String) -> CallError {
+    if crate::api::no_answer(&err) {
+        CallError::NoAnswer(err)
+    } else {
+        CallError::Failed(err)
     }
 }

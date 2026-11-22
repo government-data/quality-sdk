@@ -190,12 +190,16 @@ fn the_installed_modules_are_put_whole() {
     let (base, _) = server(&[("PUT /updater/v1/modules", 400, r#"{"error":"bad module"}"#)]);
     let err = api(&base).put_modules(&[]).unwrap_err();
     assert!(err.contains("400 bad module"), "{err}");
+    // An HTTP error is an answer.
+    assert!(!no_answer(&err), "{err}");
 }
 
 #[test]
 fn an_api_that_does_not_answer_fails_every_call_but_orders() {
     let a = api(&closed());
-    assert!(a.version().unwrap_err().contains("does not answer"));
+    let err = a.version().unwrap_err();
+    assert!(err.contains("does not answer") && no_answer(&err), "{err}");
+    assert!(no_answer(&a.put_modules(&[]).unwrap_err()));
     assert!(a.put_state(&State::new("1.0.0")).is_err());
     assert!(a.maintenance(None, Duration::ZERO).is_err());
     assert!(a.drain(Duration::ZERO).is_err());

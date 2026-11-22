@@ -10,7 +10,12 @@
 //! 3. **Start**: the modules started.
 //! 4. **Verify**: once the internal certificate exists, quality-data
 //!    answers the version, every module is healthy, quality-data is told
-//!    the installed modules, and `install.json` is removed.
+//!    the installed modules, and `install.json` is removed. A call that
+//!    quality-data does not answer (no connection, or a TLS handshake that
+//!    fails) is tried again for up to [`ANSWER_WITHIN`]: Traefik may not
+//!    have loaded the internal entry point's files the installer has just
+//!    written, and serves another certificate until it does. An answer that
+//!    is wrong (an HTTP error, another version) fails at once.
 //!
 //! The install is reported once it is done, and when it fails after a
 //! version was chosen (decision 0004).
@@ -24,6 +29,7 @@
 //! as they are and says the step it stopped at.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use updater::engine::{apply_order, CloudError, Offer, OfferedPackage};
 use updater::state::Modules;
@@ -53,14 +59,33 @@ pub trait Installer {
     /// exists.
     fn internal_certificate(&self) -> bool;
     /// quality-data answers `version`, then every module's health.
-    fn healthy(&self, version: &str) -> Result<(), String>;
+    fn healthy(&self, version: &str) -> Result<(), CallError>;
     /// `PUT /updater/v1/modules`.
-    fn tell_modules(&self) -> Result<(), String>;
+    fn tell_modules(&self) -> Result<(), CallError>;
+    /// Wait `d` before a call is tried again.
+    fn wait(&self, d: Duration);
     /// A report of kind `install`, or with `failed` (where it stopped and
     /// why) of kind `install_failed`; if it cannot be written, it does not
     /// matter.
     fn report(&self, version: &str, failed: Option<&str>);
 }
+
+/// Why a step that calls quality-data's `updater/v1` failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CallError {
+    /// quality-data did not answer: no connection, or its TLS handshake
+    /// failed. Tried again for up to [`ANSWER_WITHIN`].
+    NoAnswer(String),
+    /// Anything else: an HTTP error answer, another version, a module not
+    /// healthy. Not tried again.
+    Failed(String),
+}
+
+/// How long the verify step tries again a call quality-data does not
+/// answer, [`ANSWER_EVERY`] apart, before it fails.
+pub const ANSWER_WITHIN: Duration = Duration::from_secs(60);
+/// The wait between two tries of a call quality-data did not answer.
+pub const ANSWER_EVERY: Duration = Duration::from_secs(5);
 
 /// How a run of `install` ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,8 +202,31 @@ fn prepare(i: &dyn Installer, o: &Offer) -> Result<(), String> {
 }
 
 fn verify(i: &dyn Installer, version: &str) -> Result<(), String> {
-    i.healthy(version)?;
-    i.tell_modules()
+    until_answered(i, &|| i.healthy(version))?;
+    until_answered(i, &|| i.tell_modules())
+}
+
+/// `call`, tried again while quality-data does not answer it, for up to
+/// [`ANSWER_WITHIN`]; any other failure at once.
+fn until_answered(
+    i: &dyn Installer,
+    call: &dyn Fn() -> Result<(), CallError>,
+) -> Result<(), String> {
+    let mut waited = Duration::ZERO;
+    loop {
+        match call() {
+            Ok(()) => return Ok(()),
+            Err(CallError::NoAnswer(e)) if waited < ANSWER_WITHIN => {
+                tracing::info!(
+                    "no answer yet, trying again in {}s: {e}",
+                    ANSWER_EVERY.as_secs()
+                );
+                i.wait(ANSWER_EVERY);
+                waited += ANSWER_EVERY;
+            }
+            Err(CallError::NoAnswer(e) | CallError::Failed(e)) => return Err(e),
+        }
+    }
 }
 
 fn cloud(e: CloudError) -> String {
