@@ -15,11 +15,13 @@ variable "modules" {
     The images each module publishes: one ECR repository per pair, named
     <project>/<module>/<image>. Adding a module is one entry; removing one
     fails while its repositories still hold images (force_delete is off), so
-    no published version disappears by mistake.
+    no published version disappears by mistake. Third-party images a module
+    runs are mirrored into its own repositories by digest
+    (tools/mirror-image.sh): quality-data's traefik and postgres.
   EOT
   type        = map(list(string))
   default = {
-    "quality-data" = ["api", "web"]
+    "quality-data" = ["api", "web", "traefik", "postgres"]
     orchestrator   = ["api", "web"]
   }
 }
