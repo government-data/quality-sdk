@@ -230,10 +230,11 @@ fn finish(host: &dyn Host, s: &mut State, outcome: Outcome) -> Result<(), String
             | OutcomeKind::Restored
             | OutcomeKind::Critical
     );
-    if terminal {
-        tracing::warn!(version = %outcome.version, kind = ?outcome.kind, "{}", outcome.detail);
-    } else {
-        tracing::info!(version = %outcome.version, kind = ?outcome.kind, "{}", outcome.detail);
+    let (version, kind, detail) = (&outcome.version, outcome.kind, &outcome.detail);
+    match log_level(kind) {
+        tracing::Level::ERROR => tracing::error!(version = %version, kind = ?kind, "{detail}"),
+        tracing::Level::WARN => tracing::warn!(version = %version, kind = ?kind, "{detail}"),
+        _ => tracing::info!(version = %version, kind = ?kind, "{detail}"),
     }
     s.last = Some(outcome.clone());
     s.phase_since = Some(host.now());
@@ -243,6 +244,19 @@ fn finish(host: &dyn Host, s: &mut State, outcome: Outcome) -> Result<(), String
         host.report_to_cloud(&outcome);
     }
     Ok(())
+}
+
+/// The level an outcome is logged at: a success or a postponement is
+/// information; going back, a failure or a refusal is a warning; needing a
+/// person is an error.
+fn log_level(kind: OutcomeKind) -> tracing::Level {
+    match kind {
+        OutcomeKind::Updated | OutcomeKind::Postponed => tracing::Level::INFO,
+        OutcomeKind::RolledBack | OutcomeKind::Restored | OutcomeKind::Failed => {
+            tracing::Level::WARN
+        }
+        OutcomeKind::Critical => tracing::Level::ERROR,
+    }
 }
 
 fn outcome(
