@@ -242,3 +242,26 @@ fn a_core_that_does_not_answer_changes_nothing() {
     assert!(err.contains("does not answer"), "{err}");
     assert_eq!(read(&f), before);
 }
+
+#[test]
+fn renewing_now_renews_however_much_is_left() {
+    let (base, asked, _) = fake_core(Core::Signs);
+    let f = files("forced");
+    let before = read(&f);
+    let r = Renewer::new(&base, Box::new(Https::default()), f.clone());
+    let serial = r.serial().unwrap();
+    assert!(!serial.is_empty() && serial.chars().all(|c| c.is_ascii_hexdigit()));
+    // Not due by the threshold: years are left.
+    let now = ends() - TimeDelta::days(300);
+    assert!(matches!(
+        r.renew_if_due(now).unwrap(),
+        Renewal::NotDue { .. }
+    ));
+    assert!(asked.lock().unwrap().is_empty());
+
+    let renewed = Utc.with_ymd_and_hms(2032, 1, 1, 0, 0, 0).unwrap();
+    assert_eq!(r.renew_now().unwrap(), renewed);
+    assert_eq!(asked.lock().unwrap().len(), 1);
+    assert_ne!(read(&f)[1], before[1], "a new certificate");
+    assert_ne!(r.serial().unwrap(), serial, "with its own serial");
+}

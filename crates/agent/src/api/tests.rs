@@ -220,7 +220,7 @@ fn an_update_is_requested_and_a_refusal_says_why() {
     let (base, sent) = server(&[("POST /updater/v1/request", 202, filed)]);
     assert_eq!(api(&base).request_update().unwrap(), "r-9");
     let sent = sent.lock().unwrap();
-    assert_eq!((sent[0].0.as_str(), sent[0].2.as_str()), ("POST", ""));
+    assert_eq!((sent[0].0.as_str(), sent[0].2.as_str()), ("POST", "{}"));
 
     let busy = r#"{"error":"an update is in progress"}"#;
     let (base, _) = server(&[("POST /updater/v1/request", 409, busy)]);

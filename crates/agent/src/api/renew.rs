@@ -87,6 +87,24 @@ impl Renewer {
         Ok(Renewal::Renewed { not_after })
     }
 
+    /// Renew now, however much is left (`quality-data-agent renew --force`,
+    /// decision 0007): a test of the renewal, or a key that may have been
+    /// exposed. The new certificate's end.
+    pub fn renew_now(&self) -> Result<DateTime<Utc>, String> {
+        self.files.finish_pending()?;
+        self.renew()
+    }
+
+    /// The serial of the certificate in use, lowercase hex (never the
+    /// certificate or the key).
+    pub fn serial(&self) -> Result<String, String> {
+        let what = |e: &dyn std::fmt::Display| format!("{}: {e}", self.files.certificate.display());
+        let pem = std::fs::read(&self.files.certificate).map_err(|e| what(&e))?;
+        let certificate = Certificate::from_pem(&pem).map_err(|e| what(&e))?;
+        let bytes = certificate.tbs_certificate.serial_number.as_bytes();
+        Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+    }
+
     fn renew(&self) -> Result<DateTime<Utc>, String> {
         let what = format!("POST {PATH}");
         let current = std::fs::read(&self.files.certificate)

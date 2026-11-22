@@ -23,6 +23,9 @@ commands:
             once it is issued
   run       the agent as a service: run the update engine with the real
             host in rounds, until stopped (needs [api] in agent.toml)
+  renew     renew the internal certificate when due (less than 30 days
+            left), or now with --force; refused while the service runs
+            (stop it first)
   update    ask for an update now, for a person on the server (decision
             0007): the request goes through quality-data, as the web's
             Update now; the running service starts it at its next round,
@@ -37,6 +40,7 @@ options:
   --every SECS         for run: how long a round waits for the next (default
                        60; the cloud is asked every hour)
   --once               for run: one round, then exit
+  --force              for renew: renew now, however much is left
   --wait               for update: wait until the service handled the
                        request and say how it ended (exit status 1 if it
                        did not update)
@@ -54,6 +58,7 @@ struct Args {
     once: bool,
     version: Option<String>,
     wait: bool,
+    force: bool,
 }
 
 /// The command line read, or how to exit (help, version, a usage error).
@@ -67,6 +72,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, ExitCode> {
         once: false,
         version: None,
         wait: false,
+        force: false,
     };
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -85,6 +91,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, ExitCode> {
             },
             "--once" => a.once = true,
             "--wait" => a.wait = true,
+            "--force" => a.force = true,
             // After `install`, the version to install; otherwise the
             // agent's own.
             "--version" if a.command.as_deref() == Some("install") => match args.next() {
@@ -127,6 +134,7 @@ fn main() -> ExitCode {
         Some("install") => install(paths, a.version.as_deref()),
         Some("run") => run(paths, a.every, a.once),
         Some("update") => update(paths, a.wait),
+        Some("renew") => renew(paths, a.force),
         Some(other) => usage(&format!("unknown command {other:?}")),
         None => usage("a command is needed"),
     }
@@ -261,6 +269,39 @@ fn update(paths: &Paths, wait: bool) -> ExitCode {
             } else {
                 ExitCode::FAILURE
             }
+        }
+        Err(err) => {
+            eprintln!("error: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// The internal certificate renewed when due, or now with `force`, under
+/// the agent's lock (the service renews too).
+fn renew(paths: &Paths, force: bool) -> ExitCode {
+    use agent::api::renew::Renewal;
+    let renewed = agent::service::lock(paths)
+        .map_err(|e| format!("{e}: stop the service first (systemctl stop quality-data-agent)"))
+        .and_then(|lock| Ok((lock, agent::service::renewer(paths)?)))
+        .and_then(|(_lock, renewer)| {
+            let done = if force {
+                renewer
+                    .renew_now()
+                    .map(|not_after| Renewal::Renewed { not_after })
+            } else {
+                renewer.renew_if_due(chrono::Utc::now())
+            }?;
+            Ok((done, renewer.serial()?))
+        });
+    match renewed {
+        Ok((Renewal::Renewed { not_after }, serial)) => {
+            println!("renewed: certificate {serial} until {not_after}");
+            ExitCode::SUCCESS
+        }
+        Ok((Renewal::NotDue { not_after }, serial)) => {
+            println!("not due: certificate {serial} until {not_after} (--force renews now)");
+            ExitCode::SUCCESS
         }
         Err(err) => {
             eprintln!("error: {err}");
