@@ -95,6 +95,11 @@ chmod +x "$FAKES"/*
 
 echo "-----BEGIN PUBLIC KEY-----" >"$WORK/index-key.pem"
 echo "signed" >"$WORK/certificate.pem"
+# The customer's web certificate, and a key that is not its.
+for n in web other; do
+  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 -subj /CN=quality.example \
+    -addext subjectAltName=DNS:quality.example -keyout "$WORK/$n.key" -out "$WORK/$n.crt" 2>/dev/null
+done
 QD_SIGNING_HELPER_SHA256="$(sha256sum "$FAKES/aws_signing_helper" | cut -d' ' -f1)"
 export PATH="$FAKES:$PATH" QD_TEST_LOG="$WORK/log" QD_SIGNING_HELPER_SHA256
 
@@ -108,7 +113,6 @@ new_root() { # new_root NAME: a server of its own, and the arguments for it
     --trust-anchor-arn arn:aws:rolesanywhere:us-east-1:1:trust-anchor/a
     --profile-arn arn:aws:rolesanywhere:us-east-1:1:profile/p --role-arn arn:aws:iam::1:role/r
     --index-key "$WORK/index-key.pem" --domain quality.example --machine-name app.internal
-    --acme-email admin@example.com
     --agent "$FAKES/quality-data-agent" --sdk "$FAKES/quality-sdk"
     --signing-helper "$FAKES/aws_signing_helper" --root "$ROOT")
 }
@@ -126,11 +130,19 @@ run "${ARGS[@]}" --colour blue
 check "an unknown option is refused (2)" test "$rc" = 2
 run "${ARGS[@]}" --channel nightly
 check "a channel other than stable or patch is refused" test "$rc" = 2
-run "${ARGS[@]/admin@example.com/}"
-check "no --acme-email: refused (2)" bash -c "test $rc = 2 && grep -q -- '--acme-email' '$WORK/out'"
-run "${ARGS[@]/admin@example.com/admin}"
-check "an --acme-email that is not an address is refused" \
-  bash -c "test $rc = 2 && grep -q 'not an e-mail' '$WORK/out'"
+refused() { # refused NAME TEXT ARGS...: exit 2, saying TEXT
+  run "${ARGS[@]}" "${@:3}"
+  check "$1" bash -c "test $rc = 2 && grep -q -- '$2' '$WORK/out'"
+}
+refused "a --tls-mode other than file or acme is refused" "file or acme" --tls-mode both
+refused "--tls-mode acme without --acme-email: refused" "needs --acme-email" --tls-mode acme
+refused "an --acme-email that is not an address is refused" "not an e-mail" --tls-mode acme --acme-email admin
+refused "--acme-email without --tls-mode acme: refused" "acme only" --acme-email admin@example.com
+refused "--tls-cert without --tls-key: refused" "go together" --tls-cert "$WORK/web.crt"
+refused "--tls-cert with --tls-mode acme: refused" "file only" --tls-mode acme \
+  --acme-email admin@example.com --tls-cert "$WORK/web.crt" --tls-key "$WORK/web.key"
+refused "a --tls-key that is not the certificate's: refused" "not the key of" \
+  --tls-cert "$WORK/web.crt" --tls-key "$WORK/other.key"
 QD_SIGNING_HELPER_SHA256=0 run "${ARGS[@]}"
 check "an aws_signing_helper with another SHA-256 is refused" grep -q "pinned SHA-256" "$WORK/out"
 mv "$ROOT/usr/libexec/docker/cli-plugins/docker-compose" "$WORK/plugin"
@@ -188,7 +200,8 @@ run "${ARGS[@]}" --certificate "$WORK/certificate.pem"
 check "the install finishes (0)" test "$rc" = 0
 check "the agent's three runs with the core's commands between them, in order" test "$(order)" = \
   "agent --root $ROOT install;ca-init;up --detach --no-build postgres;run --rm --no-deps app-machine;agent --root $ROOT install;run --rm --no-deps updater-certificate;agent --root $ROOT install;"
-check "the .env has Let's Encrypt's contact" grep -qx 'ACME_EMAIL=admin@example.com' "$MOD/.env"
+check "the .env's certificate source is file, with no ACME contact" bash -c \
+  "grep -qx 'QD_TLS_MODE=file' '$MOD/.env' && grep -qx 'ACME_EMAIL=' '$MOD/.env'"
 check "agent.toml names the installation and the internal entry point" \
   grep -qx 'url = "https://app.internal:9443/api"' "$ROOT/etc/quality-data/agent.toml"
 check "the .env is 0600 and names the module's folder" \
@@ -220,6 +233,26 @@ check "run again it neither installs nor runs a command" \
   bash -c "! grep -Eq '^agent|^sdk|ca-init|up --detach|run --rm' '$WORK/log'"
 check "run again the .env and its passwords are kept" cmp -s "$WORK/env.before" "$MOD/.env"
 
+# --- the customer's certificate, then ACME, on the installed server ---------------------
+
+: >"$WORK/log"
+run "${ARGS[@]}" --tls-cert "$WORK/web.crt" --tls-key "$WORK/web.key"
+check "with --tls-cert and --tls-key it finishes (0)" test "$rc" = 0
+check "the customer's certificate is Traefik's (0644), its key 0600" bash -c \
+  "cmp -s '$WORK/web.crt' '$MOD/certs/local.crt' && cmp -s '$WORK/web.key' '$MOD/certs/local.key' &&
+   test $(mode "$MOD/certs/local.crt") = 644 && test $(mode "$MOD/certs/local.key") = 600"
+check "Traefik is recreated for it" grep -q 'up --detach --no-build --force-recreate traefik' "$WORK/log"
+: >"$WORK/log"
+run "${ARGS[@]}" --tls-cert "$WORK/web.crt" --tls-key "$WORK/web.key"
+check "the same certificate again: Traefik is not recreated" bash -c \
+  "test $rc = 0 && ! grep -q 'force-recreate' '$WORK/log'"
+: >"$WORK/log"
+run "${ARGS[@]}" --tls-mode acme --acme-email ops@quality.example
+check "--tls-mode acme: the .env's two lines, the rest kept, Traefik recreated" bash -c \
+  "test $rc = 0 && grep -qx 'QD_TLS_MODE=acme' '$MOD/.env' && grep -qx 'ACME_EMAIL=ops@quality.example' '$MOD/.env' &&
+   grep -Ev '^(QD_TLS_MODE|ACME_EMAIL)=' '$MOD/.env' | cmp -s - <(grep -Ev '^(QD_TLS_MODE|ACME_EMAIL)=' '$WORK/env.before') &&
+   grep -q 'force-recreate traefik' '$WORK/log'"
+
 # --- cut after ca-init (PostgreSQL does not start), run again -----------------------
 
 resumed() { # what a resumed run does: PostgreSQL's one-shots, then the agent's start
@@ -247,19 +280,21 @@ QD_TEST_FAIL="app-machine" run "${ARGS[@]}" --certificate "$WORK/certificate.pem
 check "a failing app-machine stops the install (1)" \
   bash -c "test $rc = 1 && grep -q 'app-machine did not succeed' '$WORK/out'"
 # As on the first test installation: the agent's start was tried, so its
-# install.json is past the stop after prepare; and an .env written without
-# Let's Encrypt's contact.
+# install.json is past the stop after prepare; and an .env of the
+# installer before core decision 0087 (Let's Encrypt's contact, no
+# certificate source).
 "$FAKES/quality-data-agent" install 2>/dev/null || true
 check "the agent's start failed without PostgreSQL's certificate (step start)" \
   grep -q '"step": "start"' "$ROOT/var/lib/quality-data/updater/install.json"
-sed -i 's/^ACME_EMAIL=.*/ACME_EMAIL=/' "$MOD/.env"
-grep -v '^ACME_EMAIL=' "$MOD/.env" >"$WORK/env.before"
+sed -i -e 's/^ACME_EMAIL=.*/ACME_EMAIL=admin@example.com/' -e '/^QD_TLS_MODE=/d' "$MOD/.env"
+grep -Ev '^(QD_TLS_MODE|ACME_EMAIL)=' "$MOD/.env" >"$WORK/env.before"
 : >"$WORK/log"
 run "${ARGS[@]}"
 check "run again it finishes (0)" test "$rc" = 0
 check "run again: up -d postgres and app-machine before the agent's start" \
   test "$(order)" = "$(resumed)"
-check "run again the empty ACME_EMAIL is set, the rest of the .env kept" bash -c \
-  "grep -qx 'ACME_EMAIL=admin@example.com' '$MOD/.env' && grep -v '^ACME_EMAIL=' '$MOD/.env' | cmp -s '$WORK/env.before' -"
+check "run again the .env's certificate source is file, its ACME contact gone, the rest kept" bash -c \
+  "grep -qx 'QD_TLS_MODE=file' '$MOD/.env' && grep -qx 'ACME_EMAIL=' '$MOD/.env' &&
+   grep -Ev '^(QD_TLS_MODE|ACME_EMAIL)=' '$MOD/.env' | cmp -s '$WORK/env.before' -"
 
 exit "$FAILED"
