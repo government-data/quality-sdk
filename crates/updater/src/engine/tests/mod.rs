@@ -297,3 +297,14 @@ fn in_order(f: &Fake, steps: &[&str]) {
         from += i + 1;
     }
 }
+
+#[test]
+fn a_success_logs_at_info_and_going_back_or_failing_warns() {
+    use tracing::Level;
+    assert_eq!(log_level(OutcomeKind::Updated), Level::INFO);
+    assert_eq!(log_level(OutcomeKind::Postponed), Level::INFO);
+    assert_eq!(log_level(OutcomeKind::RolledBack), Level::WARN);
+    assert_eq!(log_level(OutcomeKind::Restored), Level::WARN);
+    assert_eq!(log_level(OutcomeKind::Failed), Level::WARN);
+    assert_eq!(log_level(OutcomeKind::Critical), Level::ERROR);
+}
