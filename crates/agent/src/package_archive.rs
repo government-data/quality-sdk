@@ -92,7 +92,35 @@ pub fn extract(package: &Path, dir: &Path) -> Result<(), String> {
         entry.read_to_end(&mut bytes).map_err(fail)?;
         write_file(&to, &bytes, mode)?;
     }
-    Ok(())
+    open_modes(dir)
+}
+
+/// `dir` and every directory under it 0755, every file 0644, or 0755 if
+/// it is executable: set whatever the umask, since a version's files are
+/// read by the containers' own users (PostgreSQL's init scripts, a
+/// bind-mounted configuration). A package holds no secret.
+pub fn open_modes(dir: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    fn walk(path: &Path) -> std::io::Result<()> {
+        let meta = std::fs::symlink_metadata(path)?;
+        let mode = if meta.is_dir() {
+            for entry in std::fs::read_dir(path)? {
+                walk(&entry?.path())?;
+            }
+            0o755
+        } else if meta.is_file() && meta.permissions().mode() & 0o111 != 0 {
+            0o755
+        } else if meta.is_file() {
+            0o644
+        } else {
+            return Ok(());
+        };
+        if meta.permissions().mode() & 0o7777 != mode {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+        }
+        Ok(())
+    }
+    walk(dir).map_err(|e| format!("{}: {e}", dir.display()))
 }
 
 fn write_file(path: &Path, bytes: &[u8], mode: u32) -> Result<(), String> {

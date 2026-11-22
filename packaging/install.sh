@@ -6,6 +6,7 @@
 #   sudo packaging/install.sh --installation ID --bucket NAME \
 #     --trust-anchor-arn ARN --profile-arn ARN --role-arn ARN \
 #     --index-key index-key.pem --domain APP_DOMAIN --machine-name NAME \
+#     --acme-email ADDRESS \
 #     --agent ./quality-data-agent --sdk ./quality-sdk \
 #     [--certificate signed.pem] [--channel stable] [--region us-east-1] \
 #     [--signing-helper FILE] [--version V] [--updater-name NAME] [--root DIR]
@@ -22,12 +23,18 @@
 #    (core decisions 0080, 0081, 0082): .env (0600), secrets/ (the database
 #    URL for the API's user, uid 65532; PostgreSQL's password for its user,
 #    uid 70), certs/ (Traefik's default certificate, self-signed), ca/,
-#    internal/ and machine/.
+#    internal/ and machine/. --acme-email is Let's Encrypt's contact
+#    (ACME_EMAIL, which the core's compose requires); a run with another
+#    address changes only that line of an existing .env.
 # 7. `quality-data-agent install`, three runs (decision 0006), with the
 #    core's first-start commands between them (core decision 0082): after
 #    prepare (exit 4) `ca-init`, `up -d postgres` without waiting and
 #    `app-machine`; after the start (exit 3) `updater-certificate` and
 #    internal.yml and machines-ca.crt into internal/; the third verifies.
+#    A run cut between them is resumed: before the agent's next run, once
+#    the agent's install.json says the version is prepared, every one-shot
+#    whose output is missing (ca/ca.crt, machine/machine.pem, internal/'s
+#    two files once the updater's certificate is there) runs, in order.
 # 8. The agent's systemd unit, enabled.
 #
 # It names only quality-data, the hub every installation has.
@@ -61,14 +68,16 @@ done
 for k in "${!A[@]}"; do
   case "$k" in
   installation | channel | region | bucket | trust-anchor-arn | profile-arn | role-arn | index-key | \
-    certificate | domain | machine-name | agent | sdk | signing-helper | version | updater-name | root) ;;
+    certificate | domain | machine-name | acme-email | agent | sdk | signing-helper | version | updater-name | root) ;;
   *) die "unknown option --$k" ;;
   esac
 done
-for k in installation bucket trust-anchor-arn profile-arn role-arn domain machine-name; do
+for k in installation bucket trust-anchor-arn profile-arn role-arn domain machine-name acme-email; do
   [[ -n "${A[$k]:-}" ]] || die "--$k is required (--help)"
 done
 [[ "${A[channel]}" =~ ^(stable|patch)$ ]] || die "--channel is stable or patch"
+[[ "${A[acme-email]}" =~ ^[^@[:space:]=]+@[^@[:space:]=]+\.[^@[:space:]=]+$ ]] ||
+  die "--acme-email is not an e-mail address (Let's Encrypt's contact)"
 [[ "${A[installation]}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "--installation is not an id"
 
 ROOT="${A[root]:-}"
@@ -181,7 +190,7 @@ IMAGE_TRAEFIK=
 IMAGE_POSTGRES=
 APP_DOMAIN=${A[domain]}
 INTERNAL_DOMAIN=${A[machine-name]}
-ACME_EMAIL=
+ACME_EMAIL=${A[acme-email]}
 OBS_VM=${A[machine-name]}
 TRAEFIK_INTERNAL_PORT=9443
 TRAEFIK_LAKEGATE_PORT=9444
@@ -207,6 +216,11 @@ if [[ ! -f "$MOD/.env" ]]; then
   chmod 0600 "$MOD/.env.new" && mv -f "$MOD/.env.new" "$MOD/.env"
 fi
 env_value() { sed -n "s/^$1=//p" "$MOD/.env" | tail -1; }
+if [[ "$(env_value ACME_EMAIL)" != "${A[acme-email]}" ]]; then
+  say "setting ACME_EMAIL in $MOD/.env"
+  { grep -v '^ACME_EMAIL=' "$MOD/.env"; echo "ACME_EMAIL=${A[acme-email]}"; } >"$MOD/.env.new"
+  chmod 0600 "$MOD/.env.new" && mv -f "$MOD/.env.new" "$MOD/.env"
+fi
 if [[ ! -f "$MOD/secrets/postgres_superuser_password" ]]; then
   env_value POSTGRES_SUPERUSER_PASSWORD >"$MOD/secrets/postgres_superuser_password"
 fi
@@ -243,12 +257,14 @@ first_start() {
   local image
   image="$(env_value IMAGE_API)"
   [[ -n "$image" ]] || fail "$MOD/.env has no IMAGE_API after prepare"
-  if [[ ! -f "$MOD/ca/ca.crt" ]]; then
+  if [[ ! -s "$MOD/ca/ca.crt" ]]; then
     say "ca-init"
     docker run --rm --user "$APP_UID:$APP_UID" --network none -v "$MOD/ca:/run/qd-ca" \
       --entrypoint /usr/local/bin/server "$image" \
       ca-init --name "${A[installation]}" --cert /run/qd-ca/ca.crt --key /run/qd-ca/ca.key
   fi
+  # Done once PostgreSQL's machine certificate is there.
+  [[ ! -s "$MOD/machine/machine.pem" ]] || return 0
   say "up -d postgres, without waiting"
   pkg up --detach --no-build postgres
   say "app-machine"
@@ -263,6 +279,9 @@ first_start() {
 certificates() {
   say "updater-certificate"
   oneshot updater-certificate --name "${A[updater-name]}" --dir /run/qd-updater
+  internal_files
+}
+internal_files() {
   local f
   for f in internal.yml machines-ca.crt; do
     local src="$MOD/current/infra/traefik/internal.yml"
@@ -272,9 +291,25 @@ certificates() {
   done
 }
 
+# The agent's next step (install.json), empty when there is none.
+install_step() { sed -n 's/.*"step" *: *"\([a-z_]*\)".*/\1/p' "$VAR/updater/install.json" 2>/dev/null | head -1; }
+# A run cut between the agent's runs: the one-shots whose output is missing.
+catch_up() {
+  case "$(install_step)" in
+  prepared | start | verify) ;;
+  *) return 0 ;;
+  esac
+  first_start
+  if [[ -s "$ETC/internal/certificate.pem" ]] &&
+    ! [[ -f "$MOD/internal/internal.yml" && -f "$MOD/internal/machines-ca.crt" ]]; then
+    internal_files
+  fi
+}
+
 if [[ -f "$VAR/updater/installed.json" && ! -f "$VAR/updater/install.json" ]]; then
   say "already installed: the agent updates it"
 else
+  catch_up
   args=(install)
   [[ -z "${A[version]:-}" ]] || args+=(--version "${A[version]}")
   for _ in 1 2 3 4; do

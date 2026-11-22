@@ -18,7 +18,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use crate::host::Packages;
-use crate::package_archive::{extract, files_under, listing, pack};
+use crate::package_archive::{extract, files_under, listing, open_modes, pack};
 
 /// The space an update needs on each of its disks.
 pub const MINIMUM_FREE: u64 = 2 << 30;
@@ -169,6 +169,10 @@ impl Packages for PackageFiles {
             extract(package, &partial)?;
             remove_dir(&dir)?;
             std::fs::rename(&partial, &dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        } else {
+            // A kept version (going back, or put again) may have been
+            // extracted by an agent that left its directories 0700.
+            open_modes(&dir)?;
         }
         let previous = self.current(module)?;
         let next = module_dir.join(".current.next");

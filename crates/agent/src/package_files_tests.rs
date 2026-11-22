@@ -192,3 +192,78 @@ fn an_update_needs_two_gigabytes_on_each_disk() {
     assert!(parse_df("").is_err());
     std::fs::remove_dir_all(r).unwrap();
 }
+
+/// Runs the test `name` again in a child process under `umask 077`, as the
+/// agent's unit runs (`UMask=0077`); true in that child.
+fn under_umask_077(name: &str) -> bool {
+    if std::env::var_os("AGENT_TEST_UMASK_077").is_some() {
+        return true;
+    }
+    let me = std::env::current_exe().unwrap();
+    let status = std::process::Command::new("sh")
+        .args(["-c", "umask 077 && exec \"$@\"", "sh"])
+        .arg(me)
+        .args(["--exact", name, "--test-threads=1"])
+        .env("AGENT_TEST_UMASK_077", "1")
+        .status()
+        .unwrap();
+    assert!(status.success(), "{name} under umask 077");
+    false
+}
+
+#[test]
+fn a_version_is_readable_by_the_containers_whatever_the_umask() {
+    if !under_umask_077(
+        "package_files::tests::a_version_is_readable_by_the_containers_whatever_the_umask",
+    ) {
+        return;
+    }
+    let r = root("umask");
+    let f = files(&r, MINIMUM_FREE);
+    let qd = r.join("opt/quality-data/quality-data");
+    let mode = |p: PathBuf| std::fs::metadata(p).unwrap().permissions().mode() & 0o7777;
+    let members = [
+        ("compose.yml", "v", 0o600),
+        ("infra/postgres/initdb/01-roles.sh", "#!/bin/sh", 0o700),
+        ("infra/postgres/initdb/02.sql", "select 1;", 0o600),
+    ];
+    let open = |v: &str| {
+        for d in ["", "/infra", "/infra/postgres", "/infra/postgres/initdb"] {
+            assert_eq!(mode(qd.join(format!("{v}{d}"))), 0o755, "{v}{d}");
+        }
+        assert_eq!(mode(qd.join(format!("{v}/compose.yml"))), 0o644);
+        assert_eq!(
+            mode(qd.join(format!("{v}/infra/postgres/initdb/02.sql"))),
+            0o644
+        );
+        let script = qd.join(format!("{v}/infra/postgres/initdb/01-roles.sh"));
+        assert_eq!(mode(script), 0o755);
+    };
+    f.put("quality-data", &package(&r, "1.1.2", &members), &[])
+        .unwrap();
+    open("1.1.2");
+
+    // A version an earlier agent left 0700, kept and put again, is opened.
+    for d in ["1.1.2", "1.1.2/infra", "1.1.2/infra/postgres/initdb"] {
+        std::fs::set_permissions(qd.join(d), std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    std::fs::set_permissions(
+        qd.join("1.1.2/compose.yml"),
+        std::fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    let (saved, _) = f.save("quality-data", "1.1.2").unwrap();
+    f.put("quality-data", &package(&r, "1.1.3", &members), &[])
+        .unwrap();
+    open("1.1.3");
+    f.put("quality-data", &saved, &[]).unwrap();
+    open("1.1.2");
+
+    // The saved copy extracted again (its kept directory gone) is too.
+    f.put("quality-data", &package(&r, "1.1.4", &members), &[])
+        .unwrap();
+    std::fs::remove_dir_all(qd.join("1.1.2")).unwrap();
+    f.put("quality-data", &saved, &[]).unwrap();
+    open("1.1.2");
+    std::fs::remove_dir_all(r).unwrap();
+}
