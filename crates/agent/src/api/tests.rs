@@ -213,3 +213,21 @@ fn closed() -> String {
     drop(listener);
     base
 }
+
+#[test]
+fn an_update_is_requested_and_a_refusal_says_why() {
+    let filed = r#"{"id":"r-9","at":"2026-11-22T10:00:00Z","by":"updater"}"#;
+    let (base, sent) = server(&[("POST /updater/v1/request", 202, filed)]);
+    assert_eq!(api(&base).request_update().unwrap(), "r-9");
+    let sent = sent.lock().unwrap();
+    assert_eq!((sent[0].0.as_str(), sent[0].2.as_str()), ("POST", ""));
+
+    let busy = r#"{"error":"an update is in progress"}"#;
+    let (base, _) = server(&[("POST /updater/v1/request", 409, busy)]);
+    let err = api(&base).request_update().unwrap_err();
+    assert!(err.contains("409 an update is in progress"), "{err}");
+    let (base, _) = server(&[]);
+    let err = api(&base).request_update().unwrap_err();
+    assert!(err.contains("answered 404"), "an older quality-data: {err}");
+    assert!(no_answer(&api(&closed()).request_update().unwrap_err()));
+}
