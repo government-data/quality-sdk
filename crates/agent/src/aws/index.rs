@@ -91,6 +91,35 @@ pub fn offer(index: &Index, installed: &str, installation: &str) -> Result<Offer
     })
 }
 
+/// The version a first installation takes (decision 0004): `version`,
+/// whatever its pause and rollout, or with none the newest not paused
+/// whose rollout reaches `installation`. `upgrade_from` is not read:
+/// nothing is installed.
+pub fn first(
+    index: &Index,
+    version: Option<&str>,
+    installation: &str,
+) -> Result<Offer, CloudError> {
+    let chosen = match version {
+        Some(v) => {
+            let wanted = Version::parse(v.trim().trim_start_matches('v'))
+                .map_err(|_| CloudError::Rejected(format!("{v:?} is not a version")))?;
+            index.versions.iter().find(|p| p.version == wanted)
+        }
+        None => index
+            .versions
+            .iter()
+            .filter(|p| !p.paused && p.rollout.includes(installation))
+            .max_by(|a, b| a.version.cmp(&b.version)),
+    };
+    chosen.map(to_offer).ok_or_else(|| {
+        CloudError::Rejected(match version {
+            Some(v) => format!("the index has no version {v}"),
+            None => "the index has no version for this installation".into(),
+        })
+    })
+}
+
 /// A platform version as the engine's offer, with what each module
 /// provides and requires, which orders its packages (decision 0003).
 fn to_offer(v: &PlatformVersion) -> Offer {

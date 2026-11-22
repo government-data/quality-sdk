@@ -10,8 +10,10 @@
 //! 3. **Start**: the modules started.
 //! 4. **Verify**: once the internal certificate exists, quality-data
 //!    answers the version, every module is healthy, quality-data is told
-//!    the installed modules, and the install is reported; `install.json`
-//!    is removed.
+//!    the installed modules, and `install.json` is removed.
+//!
+//! The install is reported once it is done, and when it fails after a
+//! version was chosen (decision 0004).
 //!
 //! It runs in two phases: without the internal certificate it stops after
 //! the start ([`Done::NeedsCertificate`]), so the installer can issue it
@@ -25,6 +27,7 @@ use std::path::{Path, PathBuf};
 use updater::engine::{apply_order, CloudError, Offer, OfferedPackage};
 use updater::state::Modules;
 
+pub mod adapters;
 mod progress;
 
 pub use progress::{Progress, Step};
@@ -52,9 +55,10 @@ pub trait Installer {
     fn healthy(&self, version: &str) -> Result<(), String>;
     /// `PUT /updater/v1/modules`.
     fn tell_modules(&self) -> Result<(), String>;
-    /// A report of kind `install`; if it cannot be written, it does not
+    /// A report of kind `install`, or with `failed` (where it stopped and
+    /// why) of kind `install_failed`; if it cannot be written, it does not
     /// matter.
-    fn report(&self, version: &str);
+    fn report(&self, version: &str, failed: Option<&str>);
 }
 
 /// How a run of `install` ended.
@@ -78,7 +82,7 @@ pub struct Files {
 
 /// Install, or resume an install, up to where it can go now.
 pub fn install(i: &dyn Installer, files: &Files, version: Option<&str>) -> Result<Done, String> {
-    let (mut p, mut offer) = match Progress::load(&files.progress)? {
+    let (p, offer) = match Progress::load(&files.progress)? {
         Some(p) => {
             if let Some(v) = version.filter(|v| *v != p.version) {
                 return Err(format!(
@@ -104,6 +108,23 @@ pub fn install(i: &dyn Installer, files: &Files, version: Option<&str>) -> Resul
             (p, Some(o))
         }
     };
+    let version = p.version.clone();
+    let done = steps(i, files, p, offer);
+    match &done {
+        Ok(Done::Installed { .. }) => i.report(&version, None),
+        Ok(Done::NeedsCertificate { .. }) => {}
+        Err(err) => i.report(&version, Some(err)),
+    }
+    done
+}
+
+/// The steps from the stored one, each stored before the next.
+fn steps(
+    i: &dyn Installer,
+    files: &Files,
+    mut p: Progress,
+    mut offer: Option<Offer>,
+) -> Result<Done, String> {
     loop {
         match p.step {
             Step::Prepare => {
@@ -125,7 +146,6 @@ pub fn install(i: &dyn Installer, files: &Files, version: Option<&str>) -> Resul
                     return Ok(Done::NeedsCertificate { version: p.version });
                 }
                 verify(i, &p.version).map_err(|e| stopped("verify", &e))?;
-                i.report(&p.version);
                 Progress::remove(&files.progress)?;
                 return Ok(Done::Installed { version: p.version });
             }

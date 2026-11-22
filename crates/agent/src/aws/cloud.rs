@@ -14,9 +14,9 @@ use super::credentials::{Cached, SigningHelper};
 use super::ecr::Ecr;
 use super::http::Https;
 use super::images::{pull_all, Docker, ImagePuller};
-use super::index::{offer, IndexReader};
+use super::index::{first, offer, IndexReader};
 use super::packages::download;
-use super::reports::Report;
+use super::reports::{Report, FORMAT};
 use crate::config::Config;
 use crate::host::Cloud;
 use crate::paths::Paths;
@@ -80,6 +80,48 @@ impl AwsCloud {
     }
 }
 
+impl AwsCloud {
+    /// The first installation's version from the verified index
+    /// ([`first`]), with the registry's credential to pull its images.
+    pub fn choose(&self, version: Option<&str>) -> Result<Offer, CloudError> {
+        let index = self.index.read(&self.bucket)?;
+        let mut o = first(&index, version, &self.installation)?;
+        let auth = self.ecr.authorization().map_err(registry)?;
+        o.registry = Some((auth.host, auth.user, auth.password));
+        Ok(o)
+    }
+
+    /// A report of kind `install`, or `install_failed` with where it
+    /// stopped and why; if it cannot be written, it does not matter.
+    pub fn report_install(&self, version: &str, failed: Option<&str>) {
+        let report = Report {
+            format: FORMAT,
+            installation: &self.installation,
+            agent: env!("CARGO_PKG_VERSION"),
+            kind: if failed.is_some() {
+                "install_failed"
+            } else {
+                "install"
+            },
+            version,
+            from: "",
+            at: chrono::Utc::now(),
+            detail: failed.unwrap_or(""),
+        };
+        match report.write(&self.bucket) {
+            Ok(key) => tracing::info!("reported {key}"),
+            Err(err) => tracing::warn!("could not report the install: {err}"),
+        }
+    }
+}
+
+fn registry(e: AwsError) -> CloudError {
+    match e {
+        AwsError::Denied(m) => CloudError::Rejected(m),
+        AwsError::Unavailable(m) | AwsError::Failed(m) => CloudError::Network(m),
+    }
+}
+
 impl Cloud for AwsCloud {
     /// The verified index's offer; with a newer version, the registry's
     /// credential to pull its images.
@@ -87,10 +129,7 @@ impl Cloud for AwsCloud {
         let index = self.index.read(&self.bucket)?;
         let mut o = offer(&index, installed_version, &self.installation)?;
         if is_newer(&o.version, installed_version) {
-            let auth = self.ecr.authorization().map_err(|e| match e {
-                AwsError::Denied(m) => CloudError::Rejected(m),
-                AwsError::Unavailable(m) | AwsError::Failed(m) => CloudError::Network(m),
-            })?;
+            let auth = self.ecr.authorization().map_err(registry)?;
             o.registry = Some((auth.host, auth.user, auth.password));
         }
         Ok(o)

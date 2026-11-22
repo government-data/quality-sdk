@@ -15,6 +15,10 @@ commands:
   check     check the AWS side end to end: credentials, the signed index,
             the registry and one report of kind `check` (no image is
             pulled, nothing published; packages only with --download)
+  install   lay out the first platform version (decision 0004): choose,
+            prepare, start; once the internal certificate exists, verify.
+            Exit status 3: started, the internal certificate is missing;
+            run it again once it is issued
   run       the agent as a service: run the update engine with the real
             host in rounds, until stopped (needs [api] in agent.toml)
 
@@ -26,7 +30,10 @@ options:
                        check its SHA-256
   --every SECS         for run: how long a round waits for the next (default
                        60; the cloud is asked every hour)
-  --once               for run: one round, then exit";
+  --once               for run: one round, then exit
+  --version VERSION    after install: this version of the index, even paused
+                       or outside its rollout (default: the newest that
+                       reaches the installation)";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -36,6 +43,7 @@ fn main() -> ExitCode {
     let mut download = false;
     let mut every = agent::service::EVERY;
     let mut once = false;
+    let mut version = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--root" => match args.next() {
@@ -52,6 +60,12 @@ fn main() -> ExitCode {
                 _ => return usage("--every needs a number of seconds above 0"),
             },
             "--once" => once = true,
+            // After `install`, the version to install; otherwise the
+            // agent's own.
+            "--version" if command.as_deref() == Some("install") => match args.next() {
+                Some(v) => version = Some(v),
+                None => return usage("install --version needs a version"),
+            },
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return ExitCode::SUCCESS;
@@ -76,6 +90,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some("install") => install(&paths, version.as_deref()),
         Some("run") => run(&paths, every, once),
         Some(other) => usage(&format!("unknown command {other:?}")),
         None => usage("a command is needed"),
@@ -105,12 +120,43 @@ fn config(paths: &Paths) -> ExitCode {
     }
 }
 
-/// The agent as a service: its lock, the real host, rounds until stopped.
-fn run(paths: &Paths, every: Duration, once: bool) -> ExitCode {
+/// The first platform version, under the agent's lock.
+fn install(paths: &Paths, version: Option<&str>) -> ExitCode {
+    use agent::install::{adapters, Done};
+    logs();
+    let done = agent::service::lock(paths).and_then(|_lock| {
+        let installer = adapters::Adapters::new(paths)?;
+        agent::install::install(&installer, &adapters::files(paths), version)
+    });
+    match done {
+        Ok(Done::Installed { version }) => {
+            println!("installed {version}");
+            ExitCode::SUCCESS
+        }
+        Ok(Done::NeedsCertificate { version }) => {
+            println!(
+                "{version} started; the internal certificate is missing ({}): issue it,                  then run install again",
+                paths.internal_certificate().display()
+            );
+            ExitCode::from(3)
+        }
+        Err(err) => {
+            eprintln!("error: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn logs() {
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_max_level(tracing::Level::INFO)
         .init();
+}
+
+/// The agent as a service: its lock, the real host, rounds until stopped.
+fn run(paths: &Paths, every: Duration, once: bool) -> ExitCode {
+    logs();
     let started = agent::service::lock(paths).and_then(|lock| {
         let host = agent::service::assemble(paths)?;
         let renewer = agent::service::renewer(paths)?;

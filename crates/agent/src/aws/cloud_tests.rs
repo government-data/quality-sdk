@@ -135,3 +135,26 @@ fn an_outcome_is_reported_and_a_failed_report_does_not_matter() {
     assert!(sent[0].url.ends_with("-updated-1.4.0.json"));
     cleanup(&c);
 }
+
+#[test]
+fn a_first_installation_chooses_with_the_registry_and_reports_its_install() {
+    let aws = serving(&index("stable", 3), 1);
+    ecr_answers(&aws);
+    aws.answer("PUT /reports/inst-0001/", 200, b"");
+    let (c, _) = cloud(&aws, "cloud-install");
+    let o = c.choose(Some("1.3.0")).unwrap();
+    assert_eq!(o.version, "1.3.0");
+    assert!(o.registry.is_some());
+    c.report_install("1.3.0", None);
+    c.report_install("1.3.0", Some("the install stopped at start: no"));
+    let sent = aws.sent.borrow();
+    let reports: Vec<_> = sent
+        .iter()
+        .filter(|r| r.url.contains("/reports/"))
+        .collect();
+    assert!(reports[0].url.ends_with("-install-1.3.0.json"));
+    assert!(reports[1].url.ends_with("-install_failed-1.3.0.json"));
+    let body = String::from_utf8(reports[1].body.clone()).unwrap();
+    assert!(body.contains("stopped at start"), "{body}");
+    cleanup(&c);
+}
