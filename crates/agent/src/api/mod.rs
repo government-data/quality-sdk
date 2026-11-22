@@ -79,9 +79,10 @@ impl UpdaterApi {
 
     /// `POST /updater/v1/request`: "Update now" for a person on the server
     /// (decision 0007); the request's id. quality-data answers 409 while an
-    /// update is under way.
+    /// update is under way. The body is an empty object, so the request
+    /// has a length: quality-data reads none.
     pub fn request_update(&self) -> Result<String, String> {
-        let v = self.call("POST", "/request", None)?;
+        let v = self.call("POST", "/request", Some(&json!({})))?;
         v["id"]
             .as_str()
             .filter(|s| !s.is_empty())
