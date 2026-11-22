@@ -150,7 +150,10 @@ fn a_server_of_another_ca_or_a_certificate_it_did_not_issue_is_refused() {
     // The server's certificate is not the installation's CA's.
     let port = server(&other, &installation);
     let f = files("server", &installation, &installation);
-    assert!(version(port, &f).unwrap_err().contains("does not answer"));
+    let err = version(port, &f).unwrap_err();
+    // A server of another certificate (as Traefik's default one before it
+    // loads the internal entry point's) is no answer.
+    assert!(err.contains("does not answer") && crate::api::no_answer(&err));
     // The agent's certificate is not one the server's CA issued.
     let port = server(&installation, &installation);
     let f = files("client", &installation, &other);

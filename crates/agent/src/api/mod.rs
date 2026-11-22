@@ -30,6 +30,16 @@ pub mod tls;
 /// The protocol's prefix.
 pub const PREFIX: &str = "/updater/v1";
 
+/// What a call's error says when quality-data did not answer it: the
+/// connection or its TLS failed (not an HTTP error answer).
+const NO_ANSWER: &str = "quality-data does not answer";
+
+/// Whether `err`, from a call of [`UpdaterApi`], is one quality-data did
+/// not answer (no connection, or a TLS handshake that failed).
+pub fn no_answer(err: &str) -> bool {
+    err.contains(NO_ANSWER)
+}
+
 /// The `updater/v1` client.
 pub struct UpdaterApi {
     base: String,
@@ -82,7 +92,7 @@ impl UpdaterApi {
         let r = self
             .transport
             .send(request)
-            .map_err(|e| format!("{what}: quality-data does not answer: {e}"))?;
+            .map_err(|e| format!("{what}: {NO_ANSWER}: {e}"))?;
         let answer: Value = serde_json::from_slice(&r.body).unwrap_or(Value::Null);
         if (200..300).contains(&r.status) {
             return Ok(answer);

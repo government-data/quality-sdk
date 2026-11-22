@@ -15,6 +15,11 @@ struct Fake {
     damaged: Option<&'static str>,
     rejected: bool,
     certificate: Cell<bool>,
+    /// A `updater/v1` call quality-data does not answer, and how many
+    /// times before it answers.
+    no_answer: Cell<Option<(&'static str, u32)>>,
+    /// quality-data answers another version.
+    wrong_version: bool,
 }
 
 impl Fake {
@@ -29,6 +34,20 @@ impl Fake {
 
     fn calls(&self) -> Vec<String> {
         self.calls.take()
+    }
+
+    /// An `updater/v1` call: not answered while `no_answer` says so.
+    fn api_call(&self, what: &'static str, detail: &str) -> Result<(), CallError> {
+        self.call(what, detail).map_err(CallError::Failed)?;
+        match self.no_answer.get() {
+            Some((w, n)) if w == what && n > 0 => {
+                self.no_answer.set(Some((w, n - 1)));
+                Err(CallError::NoAnswer(format!(
+                    "{what}: quality-data does not answer: invalid peer certificate"
+                )))
+            }
+            _ => Ok(()),
+        }
     }
 }
 
@@ -94,11 +113,18 @@ impl Installer for Fake {
     fn internal_certificate(&self) -> bool {
         self.certificate.get()
     }
-    fn healthy(&self, version: &str) -> Result<(), String> {
-        self.call("healthy", version)
+    fn healthy(&self, version: &str) -> Result<(), CallError> {
+        self.api_call("healthy", version)?;
+        if self.wrong_version {
+            return Err(CallError::Failed(format!("2.0.0 answers, not {version}")));
+        }
+        Ok(())
     }
-    fn tell_modules(&self) -> Result<(), String> {
-        self.call("tell_modules", "")
+    fn tell_modules(&self) -> Result<(), CallError> {
+        self.api_call("tell_modules", "")
+    }
+    fn wait(&self, d: Duration) {
+        let _ = self.call("wait", &d.as_secs().to_string());
     }
     fn report(&self, version: &str, failed: Option<&str>) {
         let kind = if failed.is_some() {
@@ -307,5 +333,83 @@ fn a_damaged_package_prepares_nothing() {
         Progress::load(&files.progress).unwrap().unwrap().step,
         Step::Prepare
     );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Installed, up to the verify step with the internal certificate issued.
+fn at_verify(name: &str) -> (Fake, Files, PathBuf) {
+    let (fake, files, dir) = setup(name);
+    install(&fake, &files, None).unwrap();
+    assert!(matches!(
+        install(&fake, &files, None),
+        Ok(Done::NeedsCertificate { .. })
+    ));
+    fake.certificate.set(true);
+    fake.calls();
+    (fake, files, dir)
+}
+
+#[test]
+fn a_call_not_answered_yet_is_tried_again_until_it_answers() {
+    // As Traefik serving another certificate until it loads the internal
+    // entry point's files, just written by the installer.
+    for what in ["healthy", "tell_modules"] {
+        let (fake, files, dir) = at_verify(&format!("retry-{what}"));
+        fake.no_answer.set(Some((what, 3)));
+        assert!(matches!(
+            install(&fake, &files, None),
+            Ok(Done::Installed { .. })
+        ));
+        let calls = fake.calls();
+        let waits = calls.iter().filter(|c| *c == "wait 5").count();
+        let tries = calls.iter().filter(|c| c.starts_with(what)).count();
+        assert_eq!((waits, tries), (3, 4), "{calls:?}");
+        assert_eq!(calls.last().unwrap(), "report 1.0.0");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+fn a_call_never_answered_fails_after_the_window_and_resumes() {
+    let (fake, files, dir) = at_verify("never");
+    fake.no_answer.set(Some(("healthy", u32::MAX)));
+    let err = install(&fake, &files, None).unwrap_err();
+    assert!(
+        err.contains("stopped at verify") && err.contains("does not answer"),
+        "{err}"
+    );
+    let calls = fake.calls();
+    let waits = calls.iter().filter(|c| *c == "wait 5").count();
+    let every = ANSWER_EVERY.as_secs();
+    assert_eq!(waits as u64 * every, ANSWER_WITHIN.as_secs(), "{calls:?}");
+    assert!(!calls.iter().any(|c| c.starts_with("tell_modules")));
+    assert_eq!(calls.last().unwrap(), "report_failed 1.0.0");
+    assert_eq!(
+        Progress::load(&files.progress).unwrap().unwrap().step,
+        Step::Verify
+    );
+    fake.no_answer.set(None);
+    assert!(matches!(
+        install(&fake, &files, None),
+        Ok(Done::Installed { .. })
+    ));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_wrong_answer_fails_at_once() {
+    // Another version answering is not tried again.
+    let (mut fake, files, dir) = at_verify("wrong");
+    fake.wrong_version = true;
+    let err = install(&fake, &files, None).unwrap_err();
+    assert!(err.contains("2.0.0 answers, not 1.0.0"), "{err}");
+    assert_eq!(fake.calls(), ["healthy 1.0.0", "report_failed 1.0.0"]);
+    std::fs::remove_dir_all(dir).unwrap();
+    // Nor an HTTP error answer (or any failure that is not "no answer").
+    let (fake, files, dir) = at_verify("http");
+    *fake.fail_once.borrow_mut() = Some("tell_modules");
+    let err = install(&fake, &files, None).unwrap_err();
+    assert!(err.contains("tell_modules failed"), "{err}");
+    assert!(!fake.calls().iter().any(|c| c.starts_with("wait")));
     std::fs::remove_dir_all(dir).unwrap();
 }
