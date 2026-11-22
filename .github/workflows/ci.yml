@@ -20,9 +20,6 @@ jobs:
   terraform:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: infra/aws
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,9 +27,15 @@ jobs:
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: 1.15.0
-      - run: terraform fmt -check -recursive
-      - run: terraform init -backend=false -input=false
-      - run: terraform validate
+      # One job, the required check `terraform`, for every Terraform root.
+      - run: terraform fmt -check -recursive infra
+      - name: validate every root
+        run: |
+          set -euo pipefail
+          for root in infra/aws infra/test-installation; do
+            terraform -chdir="$root" init -backend=false -input=false
+            terraform -chdir="$root" validate
+          done
 
   rust:
     runs-on: ubuntu-latest
