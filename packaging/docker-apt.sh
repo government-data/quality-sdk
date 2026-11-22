@@ -19,6 +19,8 @@ DOCKER_SUPPORTED="ubuntu:24.04:noble ubuntu:22.04:jammy debian:12:bookworm"
 # with (decision 0005, Verification); older ones are refused.
 DOCKER_FLOOR_ENGINE=29.4.1
 DOCKER_FLOOR_COMPOSE=5.1.3
+# Where /etc/apt is (the installer's --root, for its tests).
+DOCKER_APT_ROOT=${DOCKER_APT_ROOT:-}
 
 # docker_apt_distro OS_RELEASE: "id version codename" of a supported
 # distribution; fails, printing nothing, for any other.
@@ -46,40 +48,43 @@ docker_apt_packages() {
 
 # docker_apt_repository ID CODENAME: Docker's repository added, its key
 # checked against the pinned fingerprint first. Root's own keyring is not
-# touched; the files apt reads are 0644 (apt reads them as _apt).
-docker_apt_repository() {
-  local id=$1 codename=$2 home key fingerprint arch
+# touched; the files apt reads are 0644 (apt reads them as _apt), whatever
+# the caller's umask.
+docker_apt_repository() (
+  umask 022
+  local id=$1 codename=$2 home asc fingerprint arch etc="$DOCKER_APT_ROOT/etc/apt"
   DEBIAN_FRONTEND=noninteractive apt-get update -qq
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ca-certificates curl gnupg >/dev/null
   home="$(mktemp -d)"
-  key="$home/docker.asc"
-  if ! curl -fsSL "$DOCKER_REPOSITORY/$id/gpg" -o "$key"; then
+  asc="$home/docker.asc"
+  if ! curl -fsSL "$DOCKER_REPOSITORY/$id/gpg" -o "$asc"; then
     rm -rf "$home"
     echo "error: could not download Docker's signing key" >&2
     return 1
   fi
-  fingerprint="$(GNUPGHOME="$home" gpg --batch --show-keys --with-colons "$key" 2>/dev/null |
+  fingerprint="$(GNUPGHOME="$home" gpg --batch --show-keys --with-colons "$asc" 2>/dev/null |
     awk -F: '$1 == "fpr" { print $10; exit }')"
   if [[ "$fingerprint" != "$DOCKER_KEY_FINGERPRINT" ]]; then
     rm -rf "$home"
     echo "error: Docker's signing key is not the pinned one (${fingerprint:-none})" >&2
     return 1
   fi
-  install -d -m 0755 /etc/apt/keyrings
-  GNUPGHOME="$home" gpg --batch --dearmor <"$key" >/etc/apt/keyrings/docker.gpg
+  install -d -m 0755 "$etc/keyrings" "$etc/sources.list.d"
+  GNUPGHOME="$home" gpg --batch --dearmor <"$asc" >"$etc/keyrings/docker.gpg"
   rm -rf "$home"
-  chmod 0644 /etc/apt/keyrings/docker.gpg
+  chmod 0644 "$etc/keyrings/docker.gpg"
   arch="$(dpkg --print-architecture)"
   echo "deb [arch=$arch signed-by=/etc/apt/keyrings/docker.gpg] $DOCKER_REPOSITORY/$id $codename stable" \
-    >/etc/apt/sources.list.d/docker.list
-  chmod 0644 /etc/apt/sources.list.d/docker.list
+    >"$etc/sources.list.d/docker.list"
+  chmod 0644 "$etc/sources.list.d/docker.list"
   DEBIAN_FRONTEND=noninteractive apt-get update -qq
-}
+)
 
 # docker_apt_install [--dry-run] PACKAGE=VERSION...: install them.
-docker_apt_install() {
+docker_apt_install() (
+  umask 022
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "$@"
-}
+)
 
 # docker_version_at_least HAVE FLOOR: whether version HAVE >= FLOOR
 # (dotted numbers, a leading v and anything after the numbers ignored).

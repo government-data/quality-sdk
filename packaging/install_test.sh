@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests packaging/install.sh under --root directories, with fakes of docker,
 # quality-data-agent and quality-sdk on PATH: no Docker, no AWS, no root.
-# Its arguments and refusals, a whole install (the agent's three runs and
+# Its arguments and refusals, Docker checked and installed with
+# --install-docker (fakes of apt-get, curl, gpg and dpkg), a whole install (the agent's three runs and
 # the core's commands between them, in core decision 0082's order), the
 # files and their modes and owners, a second run doing nothing, and runs
 # cut between the agent's runs then resumed.
@@ -30,6 +31,8 @@ cat >"$FAKES/docker" <<'EOF'
 echo "docker $*" >>"$QD_TEST_LOG"
 [[ -z "${QD_TEST_FAIL:-}" || "$*" != *"$QD_TEST_FAIL"* ]] || exit 1
 case "$*" in
+"version --format "*) echo "${QD_TEST_ENGINE:-29.10.0}" ;;
+"compose version --short") echo "${QD_TEST_COMPOSE:-5.8.0}" ;;
 *" ca-init "*) echo ca >"$QD_TEST_MOD/ca/ca.crt" ;;
 *"--no-deps app-machine "*) echo pem >"$QD_TEST_MOD/machine/machine.pem" ;;
 *"--no-deps updater-certificate "*) echo pem >"$QD_TEST_ROOT/etc/quality-data/internal/certificate.pem" ;;
@@ -68,6 +71,25 @@ echo "sdk $*" >>"$QD_TEST_LOG"
 d="$QD_TEST_ROOT/etc/quality-data/enrolment"
 echo key >"$d/private-key.pem"; echo "REQUEST" >"$d/request.csr"
 EOF
+# Docker's apt repository: installing docker-ce makes QD_DOCKER_BIN.
+cat >"$FAKES/apt-get" <<'EOF'
+#!/usr/bin/env bash
+echo "apt-get $*" >>"$QD_TEST_LOG"
+if [[ "$*" == *" docker-ce=5:"* ]]; then install -D -m 0755 /dev/null "$QD_DOCKER_BIN"; fi
+EOF
+cat >"$FAKES/curl" <<'EOF'
+#!/usr/bin/env bash
+echo "curl $*" >>"$QD_TEST_LOG"
+while (($#)); do [[ "$1" != -o ]] || echo KEY >"$2"; shift; done
+EOF
+cat >"$FAKES/gpg" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+*--show-keys*) echo "pub:-:4096:1:8D81803C0EBFCD88:"; echo "fpr:::::::::${QD_TEST_FINGERPRINT:-9DC858229FC7DD38854AE2D88D81803C0EBFCD88}:" ;;
+*--dearmor*) cat ;;
+esac
+EOF
+printf '#!/bin/sh\necho amd64\n' >"$FAKES/dpkg"
 echo helper >"$FAKES/aws_signing_helper"
 chmod +x "$FAKES"/*
 
@@ -115,6 +137,43 @@ mv "$ROOT/usr/libexec/docker/cli-plugins/docker-compose" "$WORK/plugin"
 run "${ARGS[@]}"
 check "no system-wide Compose plugin: refused" grep -q "system-wide" "$WORK/out"
 mv "$WORK/plugin" "$ROOT/usr/libexec/docker/cli-plugins/docker-compose"
+QD_TEST_ENGINE=29.3.0 run "${ARGS[@]}"
+check "a Docker Engine older than the floor is refused" bash -c "test $rc = 2 && grep -q 'too old' '$WORK/out'"
+QD_TEST_COMPOSE=v5.0.2 run "${ARGS[@]}"
+check "a Compose plugin older than the floor is refused" bash -c "test $rc = 2 && grep -q 'too old' '$WORK/out'"
+
+# --- Docker installed with --install-docker -------------------------------------------
+
+os_release() { # os_release ID VERSION CODENAME
+  mkdir -p "$ROOT/etc"
+  printf 'ID=%s\nVERSION_ID="%s"\nVERSION_CODENAME=%s\n' "$@" >"$ROOT/etc/os-release"
+}
+new_root no-docker
+export QD_DOCKER_BIN="$ROOT/usr/bin/docker"
+: >"$WORK/log"
+run "${ARGS[@]}"
+check "no Docker and no --install-docker: refused, naming the flag" \
+  bash -c "test $rc = 2 && grep -q -- '--install-docker' '$WORK/out'"
+os_release ubuntu 20.04 focal
+run "${ARGS[@]}" --install-docker
+check "--install-docker on Ubuntu 20.04 is refused" bash -c "test $rc = 2 && grep -q 'supports' '$WORK/out'"
+os_release ubuntu 24.04 noble
+QD_TEST_FINGERPRINT=0000 run "${ARGS[@]}" --install-docker
+check "a Docker key with another fingerprint: nothing installed" bash -c \
+  "test $rc = 1 && grep -q 'not the pinned one' '$WORK/out' && ! grep -q 'docker-ce=' '$WORK/log'"
+run "${ARGS[@]}" --install-docker
+check "--install-docker on Ubuntu 24.04 installs the pinned packages" grep -qx \
+  "apt-get install -y -qq --no-install-recommends docker-ce=5:29.10.0-1~ubuntu.24.04~noble docker-ce-cli=5:29.10.0-1~ubuntu.24.04~noble containerd.io=2.4.2-4~ubuntu.24.04~noble docker-compose-plugin=5.8.0-1~ubuntu.24.04~noble" \
+  "$WORK/log"
+check "from Docker's repository, its keyring readable by apt (0644)" bash -c \
+  "grep -q 'signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable' '$ROOT/etc/apt/sources.list.d/docker.list' && test $(mode "$ROOT/etc/apt/keyrings/docker.gpg" 2>/dev/null || echo 0) = 644"
+check "then the install goes on (the enrolment, exit 10)" test "$rc" = 10
+: >"$WORK/log"
+run "${ARGS[@]}" --install-docker
+check "Docker already there is not changed" bash -c \
+  "grep -q 'not changed' '$WORK/out' && ! grep -q '^apt-get' '$WORK/log'"
+unset QD_DOCKER_BIN
+new_root root
 
 # --- the enrolment waits for its certificate ------------------------------------------
 

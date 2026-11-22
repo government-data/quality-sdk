@@ -9,9 +9,15 @@
 #     --acme-email ADDRESS \
 #     --agent ./quality-data-agent --sdk ./quality-sdk \
 #     [--certificate signed.pem] [--channel stable] [--region us-east-1] \
-#     [--signing-helper FILE] [--version V] [--updater-name NAME] [--root DIR]
+#     [--signing-helper FILE] [--version V] [--updater-name NAME] \
+#     [--install-docker] [--root DIR]
 #
-# 1. Docker and the system-wide Compose plugin, or it refuses.
+# 1. Docker and the system-wide Compose plugin, at least Docker Engine
+#    29.4.1 and Compose 5.1.3, or it refuses. With --install-docker and no
+#    Docker, on Ubuntu 24.04 or 22.04 or Debian 12, it installs Docker from
+#    Docker's own apt repository (its key checked by fingerprint) at the
+#    versions pinned in docker-apt.sh; a Docker already there is never
+#    changed (decision 0007 point 1).
 # 2. /etc/quality-data, /opt/quality-data, /var/lib/quality-data.
 # 3. The binaries in /usr/local/bin; aws_signing_helper checked by SHA-256.
 # 4. The enrolment: `quality-sdk enrol` makes the key and the request; with
@@ -61,6 +67,7 @@ declare -A A=([channel]=stable [region]=us-east-1 [updater-name]=updater)
 while (($#)); do
   case "$1" in
   -h | --help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+  --install-docker) A[install-docker]=yes; shift ;;
   --*) [[ $# -ge 2 ]] || die "$1 needs a value"; A[${1#--}]="$2"; shift 2 ;;
   *) die "unexpected argument $1" ;;
   esac
@@ -68,7 +75,8 @@ done
 for k in "${!A[@]}"; do
   case "$k" in
   installation | channel | region | bucket | trust-anchor-arn | profile-arn | role-arn | index-key | \
-    certificate | domain | machine-name | acme-email | agent | sdk | signing-helper | version | updater-name | root) ;;
+    certificate | domain | machine-name | acme-email | agent | sdk | signing-helper | version | updater-name | \
+    install-docker | root) ;;
   *) die "unknown option --$k" ;;
   esac
 done
@@ -94,8 +102,30 @@ own() { # own UID PATH...
 
 # --- 1. Docker and the system-wide Compose plugin -------------------------------
 
-command -v docker >/dev/null || die "Docker is not installed"
-docker compose version >/dev/null 2>&1 || die "the Docker Compose plugin is not installed"
+# shellcheck source=packaging/docker-apt.sh
+. "$HERE/docker-apt.sh"
+DOCKER_APT_ROOT="$ROOT"
+SUPPORTED="Ubuntu 24.04 or 22.04, or Debian 12"
+NEEDED="Docker Engine $DOCKER_FLOOR_ENGINE or newer with the Compose plugin $DOCKER_FLOOR_COMPOSE or newer"
+# QD_DOCKER_BIN: the docker command looked for (the tests name an absent one).
+if ! command -v "${QD_DOCKER_BIN:-docker}" >/dev/null; then
+  [[ -n "${A[install-docker]:-}" ]] ||
+    die "Docker is not installed: give --install-docker ($SUPPORTED), or install $NEEDED"
+  distro="$(docker_apt_distro "$ROOT/etc/os-release")" ||
+    die "--install-docker supports $SUPPORTED only: install $NEEDED yourself"
+  read -r d_id d_version d_codename <<<"$distro"
+  say "Docker $DOCKER_ENGINE_VERSION from Docker's apt repository"
+  docker_apt_repository "$d_id" "$d_codename" || fail "could not add Docker's apt repository"
+  read -ra packages < <(docker_apt_packages "$d_id" "$d_version" "$d_codename")
+  docker_apt_install "${packages[@]}" || fail "could not install Docker"
+  [[ -n "$ROOT" ]] || systemctl enable --now docker
+elif [[ -n "${A[install-docker]:-}" ]]; then
+  say "Docker is already installed: not changed"
+fi
+engine="$(docker version --format '{{.Server.Version}}' 2>/dev/null)" || die "Docker does not answer (docker version): is it running?"
+docker_version_at_least "$engine" "$DOCKER_FLOOR_ENGINE" || die "Docker Engine $engine is too old: $NEEDED"
+compose="$(docker compose version --short 2>/dev/null)" || die "the Docker Compose plugin is not installed"
+docker_version_at_least "$compose" "$DOCKER_FLOOR_COMPOSE" || die "the Compose plugin $compose is too old: $NEEDED"
 plugin=""
 for d in /usr/libexec/docker/cli-plugins /usr/lib/docker/cli-plugins /usr/local/lib/docker/cli-plugins \
   /usr/local/libexec/docker/cli-plugins; do
