@@ -157,8 +157,20 @@ impl AgentHost {
     /// the whole list, so telling it twice changes nothing). A failure is
     /// logged and told again by [`AgentHost::tell_modules_if_untold`].
     pub fn tell_modules(&self) {
+        match self.put_modules() {
+            Ok(()) => self.modules_untold.set(false),
+            Err(err) => {
+                self.modules_untold.set(true);
+                tracing::warn!("quality-data was not told the installed modules: {err}");
+            }
+        }
+    }
+
+    /// `PUT /updater/v1/modules` with every installed module, saying why
+    /// when it fails.
+    pub fn put_modules(&self) -> Result<(), String> {
         let compose = &self.adapters.compose;
-        let told = compose.installed().and_then(|i| {
+        compose.installed().and_then(|i| {
             let modules = i
                 .modules
                 .iter()
@@ -171,14 +183,7 @@ impl AgentHost {
                 })
                 .collect::<Result<Vec<_>, String>>()?;
             self.adapters.api.put_modules(&modules)
-        });
-        match told {
-            Ok(()) => self.modules_untold.set(false),
-            Err(err) => {
-                self.modules_untold.set(true);
-                tracing::warn!("quality-data was not told the installed modules: {err}");
-            }
-        }
+        })
     }
 
     /// [`AgentHost::tell_modules`] when quality-data has not been told them

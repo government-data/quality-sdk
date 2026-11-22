@@ -100,8 +100,13 @@ impl Installer for Fake {
     fn tell_modules(&self) -> Result<(), String> {
         self.call("tell_modules", "")
     }
-    fn report(&self, version: &str) {
-        let _ = self.call("report", version);
+    fn report(&self, version: &str, failed: Option<&str>) {
+        let kind = if failed.is_some() {
+            "report_failed"
+        } else {
+            "report"
+        };
+        let _ = self.call(kind, version);
     }
 }
 
@@ -272,6 +277,8 @@ fn a_damaged_package_prepares_nothing() {
             .any(|c| c.starts_with("pull") || c.starts_with("put")),
         "{calls:?}"
     );
+    // A failure after the version was chosen is reported.
+    assert_eq!(calls.last().unwrap(), "report_failed 1.0.0");
     assert!(!files.installed.exists());
     assert_eq!(
         Progress::load(&files.progress).unwrap().unwrap().step,

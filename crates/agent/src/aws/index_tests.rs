@@ -193,3 +193,29 @@ fn up_to_date_the_installed_version_is_offered() {
     assert!(offer(&index, "dev", "inst-0001").is_err());
     cleanup(&r);
 }
+
+#[test]
+fn a_first_installation_takes_the_version_named_or_the_newest_that_reaches_it() {
+    let mut index = Index::parse(&index("stable", 7)).unwrap();
+    assert_eq!(first(&index, None, "inst-0001").unwrap().version, "1.4.0");
+    // Paused, or its rollout reaching no one: skipped unless named.
+    index.versions[1].paused = true;
+    index.versions[0].rollout.percent = 0;
+    let err = first(&index, None, "inst-0001").unwrap_err();
+    assert_eq!(
+        err,
+        CloudError::Rejected("the index has no version for this installation".into())
+    );
+    let o = first(&index, Some("1.4.0"), "inst-0001").unwrap();
+    assert_eq!((o.version.as_str(), o.packages.len()), ("1.4.0", 2));
+    assert_eq!(
+        first(&index, Some("v1.3.0"), "inst-0001").unwrap().version,
+        "1.3.0"
+    );
+    // `upgrade_from` is not read: nothing is installed.
+    index.versions[0].upgrade_from = ">=9.0.0".parse().unwrap();
+    assert!(first(&index, Some("1.3.0"), "inst-0001").is_ok());
+    assert!(
+        matches!(first(&index, Some("2.0.0"), "x"), Err(CloudError::Rejected(m)) if m.contains("no version 2.0.0"))
+    );
+}
