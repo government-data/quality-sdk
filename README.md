@@ -10,16 +10,17 @@ index of versions, checks the signature, pulls the images and packages it
 names, backs up, and applies the update as steps that survive a crash. The
 installation opens no inbound port for this.
 
-> **Status.** Today the repository holds the AWS side in Terraform
-> (`infra/aws/`), the pure model of the signed index (`crates/index-model`),
-> the update engine (`crates/updater`), the agent (`crates/agent`) with its
-> AWS adapter, and the `quality-sdk` CLI (`crates/sdk-cli`: `enrol`,
-> `sign-enrolment`, `revoke`, `publish`); `quality-data-agent check` checks the
-> AWS side end to end (`tools/verify/agent-aws.sh`, and with the CLI,
-> `tools/verify/publish-aws.sh`). The agent's other adapters
-> (quality-data's API, Docker Compose, PostgreSQL, the package files), the
-> module manifests and the integration between modules shown below are
-> **planned**.
+> **Status.** Built: the AWS side in Terraform (`infra/aws/`;
+> `infra/test-installation/` for the test server), the pure models of the
+> signed index (`crates/index-model`) and of module manifests
+> (`crates/module-manifest`), the update engine (`crates/updater`), the agent
+> (`crates/agent`: `install`, `run`, `check`) with its adapters for AWS,
+> quality-data's internal API, Docker Compose, PostgreSQL and the package
+> files, its systemd unit and the server installer (`packaging/install.sh`),
+> and the `quality-sdk` CLI (`crates/sdk-cli`: `enrol`, `sign-enrolment`,
+> `revoke`, `publish`). Planned: the module lifecycle
+> (`module add|remove|purge`), routes and OIDC clients from manifests, and the
+> modules other than `quality-data`.
 
 ## Architecture
 
@@ -40,7 +41,7 @@ flowchart LR
   end
 
   subgraph inst["Installation"]
-    agent["SDK agent<br/>(CLI planned)"]
+    agent["SDK agent"]
     cert["enrolment<br/>certificate"]
   end
 
@@ -106,7 +107,8 @@ flowchart TB
 Solid arrows between modules are capabilities: a module declares what it
 provides and what it requires, by name, version and protocol, and the core
 never names a module. Module-to-module and agent traffic goes through the
-`internal` entrypoint with mTLS. Everything in this diagram is planned.
+`internal` entrypoint with mTLS. The agent's path through `internal` (mTLS) to
+the core is built; the modules and the capabilities between them are planned.
 
 ## Principles
 
@@ -130,15 +132,19 @@ never names a module. Module-to-module and agent traffic goes through the
 
 ## Repository layout
 
-| Path                 | What                                                                                                   |
-| -------------------- | ------------------------------------------------------------------------------------------------------ |
-| `infra/aws/`         | The AWS side in Terraform: S3 releases bucket, ECR, KMS signing key, IAM Roles Anywhere, publish role. |
-| `crates/index-model` | The signed version index: model, validation, signature check and rollout. Pure, no I/O.                |
-| `crates/updater`     | The update engine: a state machine that survives a crash, behind its `Host` trait.                     |
-| `crates/agent`       | The installation's agent (`quality-data-agent`) and its adapters.                                      |
-| `crates/aws-client`  | The few AWS calls, signed with SigV4 by hand (no AWS SDK), shared by the agent and the CLI.            |
-| `crates/sdk-cli`     | The `quality-sdk` CLI: `enrol`, `sign-enrolment`, `revoke` and `publish`.                             |
-| `.github/workflows/` | CI checks for Terraform and Rust.                                                                      |
+| Path                       | What                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `infra/aws/`               | The AWS side in Terraform: S3 releases bucket, ECR, KMS signing key, IAM Roles Anywhere, publish role, module publish roles. |
+| `infra/test-installation/` | One EC2 test server, applied and destroyed by a person.                                                                      |
+| `crates/index-model`       | The signed version index: model, validation, signature check and rollout. Pure, no I/O.                                      |
+| `crates/module-manifest`   | Module manifests: model, validation and capability checks. Pure, no I/O.                                                     |
+| `crates/updater`           | The update engine: a state machine that survives a crash, behind its `Host` trait.                                           |
+| `crates/agent`             | The installation's agent (`quality-data-agent`) and its adapters.                                                            |
+| `crates/aws-client`        | The few AWS calls, signed with SigV4 by hand (no AWS SDK), shared by the agent and the CLI.                                  |
+| `crates/sdk-cli`           | The `quality-sdk` CLI: `enrol`, `sign-enrolment`, `revoke` and `publish`.                                                    |
+| `packaging/`               | `install.sh` and the agent's systemd unit.                                                                                   |
+| `tools/`                   | `verify/` scripts and `mirror-image.sh`.                                                                                     |
+| `.github/workflows/`       | CI checks for Terraform, Rust and shell, and the release binaries.                                                           |
 
 Design records are internal and are not part of this repository.
 
