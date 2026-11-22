@@ -50,7 +50,7 @@ resource "aws_security_group" "test" {
 
 resource "aws_vpc_security_group_ingress_rule" "ssh" {
   security_group_id = aws_security_group.test.id
-  description       = "SSH from the person's address"
+  description       = "SSH from the one allowed address"
   cidr_ipv4         = var.ssh_cidr
   ip_protocol       = "tcp"
   from_port         = 22
