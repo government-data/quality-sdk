@@ -36,6 +36,9 @@ case "$*" in
 *" ca-init "*) echo ca >"$QD_TEST_MOD/ca/ca.crt" ;;
 *"--no-deps app-machine "*) echo pem >"$QD_TEST_MOD/machine/machine.pem" ;;
 *"--no-deps updater-certificate "*) echo pem >"$QD_TEST_ROOT/etc/quality-data/internal/certificate.pem" ;;
+*" exec -T api /usr/local/bin/server timezone set Not/AZone") echo "timezone: not a time zone" >&2; exit 1 ;;
+*" exec -T api /usr/local/bin/server timezone set "*) echo "${*##* }" ;;
+*" exec -T api /usr/local/bin/server admin-access "*) printf 'choose the password at\nhttps://quality.example/activate#TOKEN\n' ;;
 esac
 exit 0
 EOF
@@ -232,6 +235,33 @@ check "run again it finishes (0)" test "$rc" = 0
 check "run again it neither installs nor runs a command" \
   bash -c "! grep -Eq '^agent|^sdk|ca-init|up --detach|run --rm' '$WORK/log'"
 check "run again the .env and its passwords are kept" cmp -s "$WORK/env.before" "$MOD/.env"
+check "without --admin-email it says how to get the administrator's link" grep -q -- '--admin-email' "$WORK/out"
+
+# --- the first administrator -----------------------------------------------------------
+
+run "${ARGS[@]}" --admin-email admin
+check "an --admin-email that is not an address is refused (2)" test "$rc" = 2
+: >"$WORK/log"
+run "${ARGS[@]}" --admin-email admin@example.com
+check "--admin-email asks the core's server admin-access, once installed" grep -qx \
+  "docker compose --project-name quality-data --project-directory $MOD/current --file $MOD/current/compose.yml --env-file $MOD/.env exec -T api /usr/local/bin/server admin-access --email admin@example.com" \
+  "$WORK/log"
+check "the link is printed to the terminal and written to no file" bash -c \
+  "test $rc = 0 && grep -q 'activate#TOKEN' '$WORK/out' && ! grep -rq 'TOKEN' '$ROOT'"
+QD_TEST_FAIL="admin-access" run "${ARGS[@]}" --admin-email admin@example.com
+check "a failing server admin-access fails the run (1)" test "$rc" = 1
+
+# --- the platform's time zone ----------------------------------------------------------
+
+run "${ARGS[@]}" --timezone 'Bogota; rm'
+check "a --timezone that is not a zone name is refused (2)" test "$rc" = 2
+: >"$WORK/log"
+run "${ARGS[@]}" --timezone America/Bogota
+check "--timezone sets it with the core's server timezone set, once installed" bash -c \
+  "test $rc = 0 && grep -q 'exec -T api /usr/local/bin/server timezone set America/Bogota\$' '$WORK/log'"
+run "${ARGS[@]}" --timezone Not/AZone
+check "a zone the core refuses fails the run (1), with the core's reason" \
+  bash -c "test $rc = 1 && grep -q 'not a time zone' '$WORK/out'"
 
 # --- the customer's certificate, then ACME, on the installed server ---------------------
 
