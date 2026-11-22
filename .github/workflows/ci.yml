@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: for f in packaging/install.sh packaging/install_test.sh; do bash -n "$f"; done
-      - run: shellcheck packaging/install.sh packaging/install_test.sh
+      - run: for f in packaging/install.sh packaging/install_test.sh packaging/docker-apt.sh tools/verify/docker-apt.sh; do bash -n "$f"; done
+      - run: shellcheck -x packaging/install.sh packaging/install_test.sh packaging/docker-apt.sh tools/verify/docker-apt.sh
       # The installer under --root directories, with fakes: no Docker, no AWS.
       - run: packaging/install_test.sh
