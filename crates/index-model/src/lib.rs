@@ -16,6 +16,8 @@ mod rollout;
 mod signature;
 
 pub use error::IndexError;
-pub use index::{Channel, Index, Module, Package, PlatformVersion, Rollout, FORMAT};
+pub use index::{
+    Channel, Index, Module, Package, PlatformVersion, Rollout, FORMAT, RESERVED_MODULE_NAMES,
+};
 pub use rollout::{bucket, installation_hash};
 pub use signature::{verify, IndexKey};

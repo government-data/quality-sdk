@@ -107,6 +107,11 @@ pub fn parse(text: &str, dir: &Path) -> Result<Release, String> {
     let mut modules = BTreeMap::new();
     let mut packages = Vec::new();
     for (name, m) in input.modules {
+        if index_model::RESERVED_MODULE_NAMES.contains(&name.as_str()) {
+            return Err(format!(
+                "module {name:?}: the name is reserved for the agent's helper images"
+            ));
+        }
         let version = m.version.to_string();
         // A name and version the agent can keep the package under.
         agent::aws::packages::package_path(Path::new("/"), &name, &version)

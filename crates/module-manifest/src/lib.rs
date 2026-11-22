@@ -24,3 +24,4 @@ pub use model::{
     ProviderHold, Provides, RequiredCapability, Requires, Volume, CHECK_TIMEOUT_SECS,
     MAX_CHECK_TIMEOUT_SECS,
 };
+pub use validate::RESERVED_MODULE_NAMES;
