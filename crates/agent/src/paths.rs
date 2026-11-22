@@ -100,6 +100,16 @@ impl Paths {
         self.data.join("updater/state.json")
     }
 
+    /// What is installed, as Docker Compose put it (`installed.json`).
+    pub fn installed_record(&self) -> PathBuf {
+        self.data.join("updater/installed.json")
+    }
+
+    /// The first installation's progress (`install.json`), while it runs.
+    pub fn install_progress(&self) -> PathBuf {
+        self.data.join("updater/install.json")
+    }
+
     /// The last index sequence accepted per channel (no replay of an older
     /// index).
     pub fn index_seen(&self) -> PathBuf {

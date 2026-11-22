@@ -121,7 +121,7 @@ impl DockerCompose {
     pub fn new(paths: &crate::paths::Paths) -> Self {
         Self {
             install: paths.install_dir().to_path_buf(),
-            record: paths.data_dir().join("updater/installed.json"),
+            record: paths.installed_record(),
             runner: Box::new(crate::command::System),
             wait_secs: 300,
         }
