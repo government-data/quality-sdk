@@ -11,7 +11,7 @@ use super::OfferedPackage;
 /// module of the version provides does not order anything (whether it is
 /// met is checked when a module is added). Two packages for one module, or
 /// modules that require each other, are refused.
-pub(super) fn apply_order(packages: &[OfferedPackage]) -> Result<Vec<OfferedPackage>, String> {
+pub fn apply_order(packages: &[OfferedPackage]) -> Result<Vec<OfferedPackage>, String> {
     let mut left: Vec<&OfferedPackage> = packages.iter().collect();
     left.sort_by(|a, b| a.module.cmp(&b.module));
     if let Some(w) = left.windows(2).find(|w| w[0].module == w[1].module) {

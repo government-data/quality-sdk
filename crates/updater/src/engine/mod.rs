@@ -35,6 +35,7 @@ mod recover;
 
 use apply::{apply, verify};
 use drain::{back_up, drain};
+pub use order::apply_order;
 use prepare::waiting;
 use recover::{restore, roll_back};
 
