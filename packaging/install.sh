@@ -10,7 +10,7 @@
 #     [--certificate signed.pem] [--channel stable] [--region us-east-1] \
 #     [--signing-helper FILE] [--version V] [--updater-name NAME] \
 #     [--tls-mode file|acme] [--tls-cert FILE --tls-key FILE] [--acme-email ADDRESS] \
-#     [--install-docker] [--root DIR]
+#     [--install-docker] [--admin-email ADDRESS] [--timezone ZONE] [--root DIR]
 #
 # 1. Docker and the system-wide Compose plugin, at least Docker Engine
 #    29.4.1 and Compose 5.1.3, or it refuses. With --install-docker and no
@@ -47,6 +47,16 @@
 #    whose output is missing (ca/ca.crt, machine/machine.pem, internal/'s
 #    two files once the updater's certificate is there) runs, in order.
 # 8. The agent's systemd unit, enabled.
+# 9. With --admin-email, once installed (this run or an earlier one): the
+#    core's `server admin-access` (core decision 0086) creates that first
+#    administrator, pending, and its one-time link to choose the password
+#    is printed here, to this terminal only: no password exists, nothing
+#    is written to a file. Run again while the account is still pending, it
+#    prints a new link (decision 0007 point 2).
+# 10. With --timezone, once installed: the platform's time zone (an IANA
+#    name, America/Bogota or UTC) set with the core's `server timezone set`
+#    (core decision 0079); the core checks the name. Without it the platform
+#    stays on UTC, or on what was set before (decision 0007 point 5).
 #
 # It names only quality-data, the hub every installation has.
 #
@@ -82,7 +92,7 @@ for k in "${!A[@]}"; do
   installation | channel | region | bucket | trust-anchor-arn | profile-arn | role-arn | index-key | \
     certificate | domain | machine-name | tls-mode | tls-cert | tls-key | acme-email | agent | sdk | signing-helper | \
     version | updater-name | \
-    install-docker | root) ;;
+    install-docker | admin-email | timezone | root) ;;
   *) die "unknown option --$k" ;;
   esac
 done
@@ -118,6 +128,10 @@ if [[ -n "${A[tls-cert]:-}" ]]; then
     echo "warning: --tls-cert does not name --domain ${A[domain]}" >&2
 fi
 [[ "${A[installation]}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "--installation is not an id"
+[[ -z "${A[admin-email]:-}" || "${A[admin-email]}" =~ ^[^@[:space:]=]+@[^@[:space:]=]+\.[^@[:space:]=]+$ ]] ||
+  die "--admin-email is not an e-mail address"
+[[ -z "${A[timezone]:-}" || "${A[timezone]}" =~ ^[A-Za-z][A-Za-z0-9_+/-]*$ ]] ||
+  die "--timezone is not a time zone name (America/Bogota, UTC)"
 
 ROOT="${A[root]:-}"
 if [[ -z "$ROOT" && $EUID -ne 0 ]]; then die "run it as root"; fi
@@ -414,5 +428,25 @@ if [[ -n "$ROOT" ]]; then
 else
   systemctl daemon-reload
   systemctl enable --now quality-data-agent
+fi
+
+# --- 9. The first administrator ------------------------------------------------------
+
+if [[ -n "${A[admin-email]:-}" ]]; then
+  say "the administrator's link to choose the password (core's server admin-access):"
+  pkg exec -T api /usr/local/bin/server admin-access --email "${A[admin-email]}" ||
+    fail "server admin-access failed: this quality-data version may not have it"
+else
+  say "no --admin-email: run this again with --admin-email ADDRESS for the first administrator's link"
+fi
+
+# --- 10. The platform's time zone ---------------------------------------------------
+
+if [[ -n "${A[timezone]:-}" ]]; then
+  say "the platform's time zone (core's server timezone set):"
+  pkg exec -T api /usr/local/bin/server timezone set "${A[timezone]}" ||
+    fail "server timezone set ${A[timezone]} failed (see above)"
+else
+  say "no --timezone: the platform keeps its time zone (UTC unless set); --timezone ZONE sets it"
 fi
 say "done"
