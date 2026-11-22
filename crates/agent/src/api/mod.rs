@@ -12,6 +12,7 @@
 //! | `GET /updater/v1/drain?horizon_secs=N` | `drain` |
 //! | `GET /updater/v1/version` | the version part of `healthy` |
 //! | `PUT /updater/v1/modules` | which modules are installed (after a start, and when the agent starts) |
+//! | `POST /updater/v1/request` | "Update now" for a person on the server (`update`, decision 0007) |
 
 use std::time::Duration;
 
@@ -74,6 +75,18 @@ impl UpdaterApi {
         files.finish_pending()?;
         let transport = tls::Internal::new(files, settings.connect)?;
         Ok(Self::new(&settings.url, Box::new(transport)))
+    }
+
+    /// `POST /updater/v1/request`: "Update now" for a person on the server
+    /// (decision 0007); the request's id. quality-data answers 409 while an
+    /// update is under way.
+    pub fn request_update(&self) -> Result<String, String> {
+        let v = self.call("POST", "/request", None)?;
+        v["id"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| format!("POST {PREFIX}/request: no `id` in its answer"))
     }
 
     /// One call; its JSON answer (`null` when it has none).

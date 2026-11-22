@@ -23,6 +23,10 @@ commands:
             once it is issued
   run       the agent as a service: run the update engine with the real
             host in rounds, until stopped (needs [api] in agent.toml)
+  update    ask for an update now, for a person on the server (decision
+            0007): the request goes through quality-data, as the web's
+            Update now; the running service starts it at its next round,
+            whatever the policy's mode and window
 
 options:
   --root DIR           the installation's paths under DIR (development)
@@ -33,56 +37,84 @@ options:
   --every SECS         for run: how long a round waits for the next (default
                        60; the cloud is asked every hour)
   --once               for run: one round, then exit
+  --wait               for update: wait until the service handled the
+                       request and say how it ended (exit status 1 if it
+                       did not update)
   --version VERSION    after install: this version of the index, even paused
                        or outside its rollout (default: the newest that
                        reaches the installation)";
 
-fn main() -> ExitCode {
-    let mut args = std::env::args().skip(1);
-    let mut paths = Paths::system();
-    let mut command = None;
-    let mut installed = None;
-    let mut download = false;
-    let mut every = agent::service::EVERY;
-    let mut once = false;
-    let mut version = None;
+/// The command line.
+struct Args {
+    paths: Paths,
+    command: Option<String>,
+    installed: Option<String>,
+    download: bool,
+    every: Duration,
+    once: bool,
+    version: Option<String>,
+    wait: bool,
+}
+
+/// The command line read, or how to exit (help, version, a usage error).
+fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, ExitCode> {
+    let mut a = Args {
+        paths: Paths::system(),
+        command: None,
+        installed: None,
+        download: false,
+        every: agent::service::EVERY,
+        once: false,
+        version: None,
+        wait: false,
+    };
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--root" => match args.next() {
-                Some(dir) => paths = Paths::under(&PathBuf::from(dir)),
-                None => return usage("--root needs a directory"),
+                Some(dir) => a.paths = Paths::under(&PathBuf::from(dir)),
+                None => return Err(usage("--root needs a directory")),
             },
             "--installed" => match args.next() {
-                Some(v) => installed = Some(v),
-                None => return usage("--installed needs a version"),
+                Some(v) => a.installed = Some(v),
+                None => return Err(usage("--installed needs a version")),
             },
-            "--download" => download = true,
+            "--download" => a.download = true,
             "--every" => match args.next().and_then(|s| s.parse::<u64>().ok()) {
-                Some(secs) if secs > 0 => every = Duration::from_secs(secs),
-                _ => return usage("--every needs a number of seconds above 0"),
+                Some(secs) if secs > 0 => a.every = Duration::from_secs(secs),
+                _ => return Err(usage("--every needs a number of seconds above 0")),
             },
-            "--once" => once = true,
+            "--once" => a.once = true,
+            "--wait" => a.wait = true,
             // After `install`, the version to install; otherwise the
             // agent's own.
-            "--version" if command.as_deref() == Some("install") => match args.next() {
-                Some(v) => version = Some(v),
-                None => return usage("install --version needs a version"),
+            "--version" if a.command.as_deref() == Some("install") => match args.next() {
+                Some(v) => a.version = Some(v),
+                None => return Err(usage("install --version needs a version")),
             },
             "-h" | "--help" => {
                 println!("{USAGE}");
-                return ExitCode::SUCCESS;
+                return Err(ExitCode::SUCCESS);
             }
             "-V" | "--version" => {
                 println!("quality-data-agent {}", env!("CARGO_PKG_VERSION"));
-                return ExitCode::SUCCESS;
+                return Err(ExitCode::SUCCESS);
             }
-            other if command.is_none() => command = Some(other.to_string()),
-            other => return usage(&format!("unexpected argument {other:?}")),
+            other if a.command.is_none() => a.command = Some(other.to_string()),
+            other => return Err(usage(&format!("unexpected argument {other:?}"))),
         }
     }
-    match command.as_deref() {
-        Some("config") => config(&paths),
-        Some("check") => match agent::check::run(&paths, installed.as_deref(), download) {
+    Ok(a)
+}
+
+fn main() -> ExitCode {
+    let a = match parse(std::env::args().skip(1)) {
+        Ok(a) => a,
+        Err(code) => return code,
+    };
+    let paths = &a.paths;
+    match a.command.as_deref() {
+        Some("config") => config(paths),
+        Some("check") => match agent::check::run(paths, a.installed.as_deref(), a.download) {
             Ok(()) => {
                 println!("check           PASS");
                 ExitCode::SUCCESS
@@ -92,8 +124,9 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Some("install") => install(&paths, version.as_deref()),
-        Some("run") => run(&paths, every, once),
+        Some("install") => install(paths, a.version.as_deref()),
+        Some("run") => run(paths, a.every, a.once),
+        Some("update") => update(paths, a.wait),
         Some(other) => usage(&format!("unknown command {other:?}")),
         None => usage("a command is needed"),
     }
@@ -190,4 +223,48 @@ fn run(paths: &Paths, every: Duration, once: bool) -> ExitCode {
     };
     agent::service::run_with(&host, &paths.state_file(), every, rounds, &mut before);
     ExitCode::SUCCESS
+}
+
+/// "Update now" from the server: the request filed through quality-data;
+/// with `wait`, followed in the state file until it ended.
+fn update(paths: &Paths, wait: bool) -> ExitCode {
+    use agent::update;
+    let before = update::last_attempt(&paths.state_file());
+    let filed = update::client(paths).and_then(|api| api.request_update());
+    let id = match filed {
+        Ok(id) => id,
+        Err(err) if err.contains("answered 404") => {
+            eprintln!("error: this quality-data does not take requests from the server ({err})");
+            return ExitCode::FAILURE;
+        }
+        Err(err) => {
+            eprintln!("error: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    println!("update requested ({id}): the agent starts it at its next round");
+    if !wait {
+        return ExitCode::SUCCESS;
+    }
+    let every = (update::POLL, update::LIMIT);
+    match update::wait(
+        &paths.state_file(),
+        &id,
+        before.as_ref(),
+        every,
+        &mut std::thread::sleep,
+    ) {
+        Ok(end) => {
+            println!("{}", end.describe());
+            if end.ok() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        Err(err) => {
+            eprintln!("error: {err}");
+            ExitCode::FAILURE
+        }
+    }
 }
