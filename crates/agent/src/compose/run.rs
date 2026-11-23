@@ -43,30 +43,10 @@ impl crate::host::Compose for DockerCompose {
                 self.run(module, &["down", "--remove-orphans"])?;
             }
         }
-        let wait = self.wait_secs.to_string();
         for module in &r.now.order {
-            self.run(
-                module,
-                &[
-                    "up",
-                    "--detach",
-                    "--no-build",
-                    "--remove-orphans",
-                    "--force-recreate",
-                    "--wait",
-                    "--wait-timeout",
-                    &wait,
-                ],
-            )
-            .map_err(|e| format!("{module}: {e}"))?;
+            self.up_one(module)?;
         }
-        let installed = r
-            .now
-            .order
-            .iter()
-            .map(|m| Ok((m.clone(), crate::manifests::read(&self.install, m)?)))
-            .collect::<Result<Vec<_>, String>>()?;
-        crate::routes::sync(&self.routes, &installed)
+        self.sync_routes()
     }
 
     /// Every module stopped, last started first (to restore the database
