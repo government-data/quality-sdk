@@ -211,7 +211,7 @@ check "the .env is 0600 and names the module's folder" \
   bash -c "test $(mode "$MOD/.env") = 600 && grep -qx 'QD_MODULE_DIR=$MOD' '$MOD/.env'"
 pw="$(sed -n 's/^APP_DB_PASSWORD=//p' "$MOD/.env")"
 check "the database URL carries the .env's password, verify-full by the machine's name" \
-  grep -q "knime_app:$pw@app.internal:5432/knime?sslmode=verify-full" "$MOD/secrets/database_url"
+  grep -q "quality_data_app:$pw@app.internal:5432/quality_data?sslmode=verify-full" "$MOD/secrets/database_url"
 check "PostgreSQL's password file is its user's (uid 70)" \
   grep -q "owner 70: $MOD/secrets/postgres_superuser_password" "$WORK/out"
 check "the database URL is the API's user's (uid 65532)" \
