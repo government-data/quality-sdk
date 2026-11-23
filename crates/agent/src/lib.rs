@@ -19,6 +19,7 @@ pub mod host;
 pub mod install;
 pub mod manifests;
 pub mod module_data;
+pub mod modules;
 pub mod package_archive;
 pub mod package_files;
 pub mod paths;

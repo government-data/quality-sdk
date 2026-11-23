@@ -25,6 +25,7 @@ use updater::state::Modules;
 use crate::command::{Cmd, Runner};
 
 mod health;
+mod one;
 mod record;
 mod run;
 
