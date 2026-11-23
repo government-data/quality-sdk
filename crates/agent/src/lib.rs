@@ -12,6 +12,7 @@ pub mod check;
 pub mod command;
 pub mod compose;
 pub mod config;
+pub mod enrol;
 #[cfg(test)]
 mod fake_exec;
 pub mod host;

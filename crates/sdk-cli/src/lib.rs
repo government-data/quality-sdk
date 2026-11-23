@@ -7,7 +7,8 @@
 //! leaves its server, and the CA's key is read only where it is kept.
 
 pub mod args;
-pub mod enrol;
+/// `qd enrol`, the agent's since decision 0008; here until `qsdk enrol` goes.
+pub use agent::enrol;
 pub mod pki;
 pub mod publish;
 pub mod revoke;

@@ -9,12 +9,12 @@ use p256::ecdsa::{Signature, VerifyingKey};
 use p256::pkcs8::DecodePublicKey;
 use x509_cert::der::{DecodePem, Encode};
 use x509_cert::request::CertReq;
+use x509_cert::spki::SubjectPublicKeyInfoOwned;
 
-use sdk_cli::enrol;
-use sdk_cli::pki::{public_key_info, signing_key_from_pem};
+use agent::enrol::{self, signing_key_from_pem};
 
 fn dir(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("sdk-cli-enrol-{name}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("agent-enrol-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -61,7 +61,7 @@ fn the_request_names_the_installation_and_holds_its_key() {
     let key = signing_key_from_pem(&std::fs::read_to_string(paths.private_key()).unwrap()).unwrap();
     assert_eq!(
         request.info.public_key,
-        public_key_info(key.verifying_key()).unwrap()
+        SubjectPublicKeyInfoOwned::from_key(*key.verifying_key()).unwrap()
     );
     let spki = request.info.public_key.to_der().unwrap();
     let signature = Signature::from_der(request.signature.as_bytes().unwrap()).unwrap();
