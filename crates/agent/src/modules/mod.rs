@@ -22,6 +22,8 @@ use module_manifest::{lost_on_removal, unmet, Auth, Manifest};
 use updater::engine::{Installed, Offer, OfferedPackage};
 use updater::state::Modules;
 
+pub mod adapters;
+
 /// The module the core is: never removed.
 const CORE: &str = "quality-data";
 
