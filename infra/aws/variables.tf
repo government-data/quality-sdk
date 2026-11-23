@@ -23,6 +23,7 @@ variable "modules" {
   default = {
     "quality-data" = ["api", "web", "traefik", "postgres"]
     orchestrator   = ["api", "web"]
+    docs           = ["web"]
   }
   validation {
     condition     = !contains(keys(var.modules), "tools")
@@ -104,13 +105,19 @@ variable "module_publishers" {
       repo  = number
     }))
   }))
-  # quality-data/core sends GitHub's immutable subject (owner 359174349,
-  # repository 1465567877), so its role must trust that form.
+  # quality-data/core and quality-data/docs send GitHub's immutable subject
+  # (owner 359174349; repositories 1465567877 and 1467989556), so their
+  # roles must trust that form.
   default = {
     "quality-data" = {
       repo   = "quality-data/core"
       images = ["api", "web"]
       ids    = { owner = 359174349, repo = 1465567877 }
+    }
+    docs = {
+      repo   = "quality-data/docs"
+      images = ["web"]
+      ids    = { owner = 359174349, repo = 1467989556 }
     }
   }
   validation {
