@@ -6,7 +6,7 @@
 #   sudo packaging/install.sh --installation ID --bucket NAME \
 #     --trust-anchor-arn ARN --profile-arn ARN --role-arn ARN \
 #     --index-key index-key.pem --domain APP_DOMAIN --machine-name NAME \
-#     --agent ./quality-data-agent --sdk ./qsdk \
+#     --agent ./quality-data-agent \
 #     [--certificate signed.pem] [--channel stable] [--region us-east-1] \
 #     [--signing-helper FILE] [--version V] [--updater-name NAME] \
 #     [--tls-mode file|acme] [--tls-cert FILE --tls-key FILE] [--acme-email ADDRESS] \
@@ -22,10 +22,12 @@
 # 3. The binaries in /usr/local/bin; aws_signing_helper checked by SHA-256;
 #    qd, the short name a person types, a link to quality-data-agent. Any
 #    other qd already there is refused (exit 2) before anything changes.
-# 4. The enrolment: `qsdk enrol` makes the key and the request; with
-#    no signed certificate yet it prints the request and exits 10: have it
-#    signed (`qsdk sign-enrolment`), then run it again with
-#    --certificate.
+# 4. The enrolment: the agent (`qd enrol`) makes the key and the request;
+#    with no signed certificate yet it prints the request and exits 10:
+#    have it signed on the operator's machine (`qsdk sign-enrolment`),
+#    then run it again with --certificate. Only the agent goes on the
+#    server: --sdk is refused (exit 2), and a qsdk or quality-sdk left in
+#    /usr/local/bin by an earlier install is noticed, not removed.
 # 5. agent.toml (no secret).
 # 6. The core's files beside its versions, in /opt/quality-data/quality-data
 #    (core decisions 0080, 0081, 0082): .env (0600), secrets/ (the database
@@ -92,10 +94,12 @@ while (($#)); do
   *) die "unexpected argument $1" ;;
   esac
 done
+[[ -z "${A[sdk]:-}" ]] ||
+  die "--sdk is no longer used: the agent enrols the server (qd enrol); run this again without --sdk"
 for k in "${!A[@]}"; do
   case "$k" in
   installation | channel | region | bucket | trust-anchor-arn | profile-arn | role-arn | index-key | \
-    certificate | domain | machine-name | tls-mode | tls-cert | tls-key | acme-email | agent | sdk | signing-helper | \
+    certificate | domain | machine-name | tls-mode | tls-cert | tls-key | acme-email | agent | signing-helper | \
     version | updater-name | \
     install-docker | admin-email | timezone | root) ;;
   *) die "unknown option --$k" ;;
@@ -142,8 +146,8 @@ ROOT="${A[root]:-}"
 if [[ -z "$ROOT" && $EUID -ne 0 ]]; then die "run it as root"; fi
 ETC="$ROOT/etc/quality-data" OPT="$ROOT/opt/quality-data" VAR="$ROOT/var/lib/quality-data"
 BIN="$ROOT/usr/local/bin" MOD="$OPT/quality-data"
-AGENT=("$BIN/quality-data-agent") SDK=("$BIN/qsdk")
-if [[ -n "$ROOT" ]]; then AGENT+=(--root "$ROOT"); SDK_ROOT=(--root "$ROOT"); else SDK_ROOT=(); fi
+AGENT=("$BIN/quality-data-agent")
+if [[ -n "$ROOT" ]]; then AGENT+=(--root "$ROOT"); fi
 
 # qd is the agent's short name, a link install.sh makes: another qd at that
 # path (a file, or a link elsewhere) is not replaced.
@@ -221,7 +225,9 @@ put_bin() { # put_bin SOURCE NAME
   [[ -x "$BIN/$2" ]] || die "$2 is not installed: give --${3:-$2}"
 }
 put_bin "${A[agent]:-}" quality-data-agent agent
-put_bin "${A[sdk]:-}" qsdk sdk
+for old in qsdk quality-sdk; do
+  [[ ! -e "$BIN/$old" ]] || say "$BIN/$old is no longer used on a server (the agent enrols it): it may be deleted"
+done
 [[ -L "$BIN/qd" ]] || ln -s quality-data-agent "$BIN/qd"
 helper="${A[signing-helper]:-}"
 if [[ -z "$helper" && ! -x "$BIN/aws_signing_helper" ]]; then
@@ -242,14 +248,14 @@ if [[ -n "${A[index-key]:-}" ]]; then
 fi
 [[ -f "$ETC/index-key.pem" ]] || die "the index's public key is not pinned: give --index-key"
 if [[ ! -f "$ETC/enrolment/private-key.pem" ]]; then
-  "${SDK[@]}" enrol --installation "${A[installation]}" "${SDK_ROOT[@]}" >/dev/null
+  "${AGENT[@]}" enrol --installation "${A[installation]}" >/dev/null
 fi
 if [[ -n "${A[certificate]:-}" ]]; then
   [[ -f "${A[certificate]}" ]] || die "${A[certificate]} does not exist"
   install -m 0644 "${A[certificate]}" "$ETC/enrolment/certificate.pem"
 fi
 if [[ ! -s "$ETC/enrolment/certificate.pem" ]]; then
-  echo "The enrolment request, to sign with \`qsdk sign-enrolment\`:"
+  echo "The enrolment request, to sign on the operator's machine with \`qsdk sign-enrolment\`:"
   cat "$ETC/enrolment/request.csr"
   echo "Then run this again with --certificate <the signed certificate>."
   exit 10
