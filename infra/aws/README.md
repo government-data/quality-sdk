@@ -29,7 +29,8 @@ no secret, but keep a copy.
 ## A module repository's CI pushes its images
 
 Each entry of `module_publishers` (by default `quality-data` →
-`quality-data/core`, images `api` and `web`) gets a role
+`quality-data/core`, images `api` and `web`; `docs` → `quality-data/docs`,
+image `web`) gets a role
 `quality-data-publish-<module>` that GitHub Actions assumes on a `v*` tag of
 that repository; it may push only to those ECR repositories. After applying, a
 person sets two repository variables (Settings → Secrets and variables →
@@ -40,6 +41,8 @@ gh variable set AWS_PUBLISH_ROLE --repo quality-data/core \
   --body "$(terraform -chdir=infra/aws output -json module_publish_role_arns | jq -r '."quality-data"')"
 gh variable set AWS_REGION --repo quality-data/core --body us-east-1
 ```
+
+Likewise for `quality-data/docs` with the output's `docs` key.
 
 ## Verify Roles Anywhere (a person, after applying)
 
