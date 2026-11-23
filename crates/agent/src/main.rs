@@ -14,6 +14,12 @@ usage: qd [--root DIR] <command>
 qd is the short name of quality-data-agent, the installation's agent.
 
 commands:
+  enrol     make this server's enrolment key (kept here, 0600,
+            /etc/quality-data/enrolment/private-key.pem) and its
+            certificate request (enrolment/request.csr, OU=installation,
+            CN=ID), printed for the operator to sign with `qsdk
+            sign-enrolment`. Needs --installation ID. Run again, it keeps
+            the key
   config    read and check /etc/quality-data/agent.toml
   check     check the AWS side end to end: credentials, the signed index,
             the registry and one report of kind `check` (no image is
@@ -36,6 +42,7 @@ commands:
 
 options:
   --root DIR           the installation's paths under DIR (development)
+  --installation ID    for enrol: the installation's id
   --installed VERSION  for check: the version to ask an offer for (default:
                        the state file's, or 0.0.0)
   --download           for check: download each package of the offer and
@@ -55,6 +62,7 @@ options:
 struct Args {
     paths: Paths,
     command: Option<String>,
+    installation: Option<String>,
     installed: Option<String>,
     download: bool,
     every: Duration,
@@ -69,6 +77,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, ExitCode> {
     let mut a = Args {
         paths: Paths::system(),
         command: None,
+        installation: None,
         installed: None,
         download: false,
         every: agent::service::EVERY,
@@ -82,6 +91,10 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, ExitCode> {
             "--root" => match args.next() {
                 Some(dir) => a.paths = Paths::under(&PathBuf::from(dir)),
                 None => return Err(usage("--root needs a directory")),
+            },
+            "--installation" => match args.next() {
+                Some(id) => a.installation = Some(id),
+                None => return Err(usage("--installation needs an id")),
             },
             "--installed" => match args.next() {
                 Some(v) => a.installed = Some(v),
@@ -123,6 +136,7 @@ fn main() -> ExitCode {
     };
     let paths = &a.paths;
     match a.command.as_deref() {
+        Some("enrol") => enrol(paths, a.installation.as_deref()),
         Some("config") => config(paths),
         Some("check") => match agent::check::run(paths, a.installed.as_deref(), a.download) {
             Ok(()) => {
@@ -146,6 +160,37 @@ fn main() -> ExitCode {
 fn usage(error: &str) -> ExitCode {
     eprintln!("error: {error}\n\n{USAGE}");
     ExitCode::from(2)
+}
+
+/// The enrolment key, made once, and its request, printed for the operator.
+fn enrol(paths: &Paths, installation: Option<&str>) -> ExitCode {
+    let Some(installation) = installation else {
+        return usage("enrol needs --installation ID");
+    };
+    let done = match agent::enrol::run(paths, installation) {
+        Ok(done) => done,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let key = paths.private_key();
+    if done.new_key {
+        eprintln!(
+            "key       {} (new, 0600; it never leaves this server)",
+            key.display()
+        );
+    } else {
+        eprintln!("key       {} (kept)", key.display());
+    }
+    eprintln!("request   {}", paths.certificate_request().display());
+    eprintln!("Send the request below to the operator for `qsdk sign-enrolment`;");
+    eprintln!(
+        "put the certificate they return at {}.",
+        paths.certificate().display()
+    );
+    print!("{}", done.request_pem);
+    ExitCode::SUCCESS
 }
 
 /// Read and check the settings, and say what they point at.
