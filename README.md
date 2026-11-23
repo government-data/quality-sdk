@@ -14,12 +14,12 @@ installation opens no inbound port for this.
 > `infra/test-installation/` for the test server), the pure models of the
 > signed index (`crates/index-model`) and of module manifests
 > (`crates/module-manifest`), the update engine (`crates/updater`), the agent
-> (`crates/agent`, `qd` on the server: `install`, `run`, `check`,
+> (`crates/agent`, `qd` on the server: `enrol`, `install`, `run`, `check`,
 > `update`, `renew`) with its adapters for AWS,
 > quality-data's internal API, Docker Compose, PostgreSQL and the package
 > files, its systemd unit and the server installer (`packaging/install.sh`),
-> and the `qsdk` CLI (`crates/sdk-cli`: `enrol`, `sign-enrolment`,
-> `revoke`, `publish`). Planned: the module lifecycle
+> and the operator's `qsdk` CLI (`crates/sdk-cli`: `sign-enrolment`,
+> `revoke`, `publish`; never on a server). Planned: the module lifecycle
 > (`module add|remove|purge`), routes and OIDC clients from manifests, and the
 > modules other than `quality-data`.
 
@@ -142,7 +142,7 @@ the core is built; the modules and the capabilities between them are planned.
 | `crates/updater`           | The update engine: a state machine that survives a crash, behind its `Host` trait.                                           |
 | `crates/agent`             | The installation's agent (`quality-data-agent`, linked as `qd`) and its adapters.                                            |
 | `crates/aws-client`        | The few AWS calls, signed with SigV4 by hand (no AWS SDK), shared by the agent and the CLI.                                  |
-| `crates/sdk-cli`           | The `qsdk` CLI: `enrol`, `sign-enrolment`, `revoke` and `publish`.                                                           |
+| `crates/sdk-cli`           | The operator's `qsdk` CLI: `sign-enrolment`, `revoke` and `publish` (never on a server).                                     |
 | `packaging/`               | `install.sh` and the agent's systemd unit.                                                                                   |
 | `tools/`                   | `verify/` scripts and `mirror-image.sh`.                                                                                     |
 | `.github/workflows/`       | CI checks for Terraform, Rust and shell, and the release binaries.                                                           |

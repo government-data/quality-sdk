@@ -15,9 +15,10 @@ workspace = true
 name = "qsdk"
 path = "src/main.rs"
 
-# The `qsdk` CLI (decision 0001): enrol an installation, sign its
-# enrolment with the installations' CA, revoke it, and publish a platform
-# version to the signed index.
+# The `qsdk` CLI, the operator's tool (decisions 0001 and 0008): sign an
+# installation's enrolment with the installations' CA, revoke it, and
+# publish a platform version to the signed index. It uses the agent's
+# enrolment code (`agent::enrol`) to check what it signs.
 [dependencies]
 agent.workspace = true
 aws-client.workspace = true

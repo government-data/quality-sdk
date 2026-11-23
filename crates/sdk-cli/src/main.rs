@@ -1,22 +1,21 @@
-//! `qsdk`: enrol an installation, sign its enrolment, revoke it,
-//! publish a platform version (decision 0001).
+//! `qsdk`, the operator's tool: sign an installation's enrolment, revoke
+//! it, publish a platform version (decision 0001). Nothing in it runs on an
+//! installation's server: the server enrols with the agent, `qd enrol`
+//! (decision 0008).
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use agent::paths::Paths;
 use sdk_cli::args::Args;
 use sdk_cli::pki::{self, Ca};
 
 const USAGE: &str = "\
 usage: qsdk <command> [options]
 
+The operator's tool, never installed on a server. A server makes its
+enrolment key and request with its agent: `qd enrol`.
+
 commands:
-  enrol --installation ID [--root DIR]
-      On the installation's server: make its P-256 key (kept there, 0600,
-      /etc/quality-data/enrolment/private-key.pem) and its certificate
-      request (enrolment/request.csr, OU=installation, CN=ID), printed for
-      the CA's holder. Run again, it keeps the key.
   sign-enrolment --ca-cert FILE --ca-key FILE [--days N] [--out FILE] REQUEST
       By the CA's holder, offline: sign an installation's certificate
       request for N days (default 365, never past the CA's own validity).
@@ -39,10 +38,7 @@ commands:
       its modules' packages, sign the index with the KMS key (the SHA-256,
       MessageType=DIGEST) and write it with its .sig once the signature
       verifies with the index key (FILE, PEM, or else KMS's public key).
-      AWS credentials come from the environment.
-
-options:
-  --root DIR   the installation's paths under DIR (development)";
+      AWS credentials come from the environment.";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -50,7 +46,6 @@ fn main() -> ExitCode {
         return usage("a command is needed");
     };
     let result = match command.as_str() {
-        "enrol" => Args::parse(args, &["installation", "root"]).and_then(|a| enrol(&a)),
         "sign-enrolment" => Args::parse(args, &["ca-cert", "ca-key", "days", "out"])
             .and_then(|a| sign_enrolment(&a)),
         "revoke" => Args::parse(
@@ -93,30 +88,6 @@ fn main() -> ExitCode {
 fn usage(error: &str) -> ExitCode {
     eprintln!("error: {error}\n\n{USAGE}");
     ExitCode::from(2)
-}
-
-fn paths(args: &Args) -> Paths {
-    args.get("root")
-        .map_or_else(Paths::system, |root| Paths::under(Path::new(root)))
-}
-
-fn enrol(args: &Args) -> Result<(), String> {
-    let paths = paths(args);
-    let done = sdk_cli::enrol::run(&paths, args.required("installation")?)?;
-    let key = pki::path(&paths.private_key());
-    if done.new_key {
-        eprintln!("key       {key} (new, 0600; it never leaves this server)");
-    } else {
-        eprintln!("key       {key} (kept)");
-    }
-    eprintln!("request   {}", pki::path(&paths.certificate_request()));
-    eprintln!("Send the request below to the CA's holder for `qsdk sign-enrolment`;");
-    eprintln!(
-        "put the certificate they return at {}.",
-        pki::path(&paths.certificate())
-    );
-    print!("{}", done.request_pem);
-    Ok(())
 }
 
 fn sign_enrolment(args: &Args) -> Result<(), String> {

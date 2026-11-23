@@ -1,6 +1,7 @@
-# Release binaries for a server (decision 0004 step 7): `quality-data-agent`
-# and `qsdk` built in release on Ubuntu 24.04 (glibc), so they name
-# the system's loader. Uploaded as workflow artifacts, which expire by
+# Release binaries (decision 0004 step 7): `quality-data-agent`, the only
+# one a server needs (decision 0008), and `qsdk`, the operator's tool for
+# the operator's machine, built in release on Ubuntu 24.04 (glibc), so they
+# name the system's loader. Uploaded as workflow artifacts, which expire by
 # themselves; no release is published. Public repository: GitHub-hosted
 # runners only, read-only token, no AWS credentials.
 name: binaries
