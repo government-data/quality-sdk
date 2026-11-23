@@ -104,8 +104,14 @@ variable "module_publishers" {
       repo  = number
     }))
   }))
+  # quality-data/core sends GitHub's immutable subject (owner 359174349,
+  # repository 1465567877), so its role must trust that form.
   default = {
-    "quality-data" = { repo = "quality-data/core", images = ["api", "web"] }
+    "quality-data" = {
+      repo   = "quality-data/core"
+      images = ["api", "web"]
+      ids    = { owner = 359174349, repo = 1465567877 }
+    }
   }
   validation {
     condition     = alltrue([for m, p in var.module_publishers : contains(keys(var.modules), m) && length(split("/", p.repo)) == 2 && length(setsubtract(p.images, lookup(var.modules, m, []))) == 0])
