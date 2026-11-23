@@ -44,7 +44,7 @@ fn check_protocol(what: &str, p: &str) -> Result<(), ManifestError> {
 }
 
 /// A Compose service: letters, digits, `.`, `_` and `-`.
-fn check_service(what: &str, s: &str) -> Result<(), ManifestError> {
+pub(crate) fn check_service(what: &str, s: &str) -> Result<(), ManifestError> {
     let ok = !s.is_empty()
         && s.len() <= 63
         && s.starts_with(|c: char| c.is_ascii_alphanumeric())
@@ -99,7 +99,8 @@ impl Manifest {
         self.validate_capabilities()?;
         validate_health(&self.health)?;
         validate_data(&self.data)?;
-        validate_drain(self.drain.as_ref())
+        validate_drain(self.drain.as_ref())?;
+        crate::route::validate(self.route.as_ref(), self.auth, self.menu.as_ref())
     }
 
     fn validate_capabilities(&self) -> Result<(), ManifestError> {
