@@ -102,7 +102,7 @@ fn release(version: &str, bytes: &[u8]) -> Release {
     let text = format!(
         r#"
 version = "{version}"
-upgrade_from = "<{version}"
+upgrade_from = ">=1.3.0, <{version}"
 [rollout]
 percent = 0
 pilots = ["inst-0001"]

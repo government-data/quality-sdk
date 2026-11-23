@@ -5,7 +5,7 @@
 //!
 //! ```toml
 //! version = "1.4.0"
-//! upgrade_from = ">=1.3.0, <1.4.0"
+//! upgrade_from = ">=1.3.0, <1.4.0"   # admits nothing below UPGRADE_FROM_FLOOR
 //! reversible = true          # default true
 //! urgent = false             # default false
 //! notes = "What is new."
@@ -27,9 +27,56 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use index_model::{installation_hash, Module, Package, PlatformVersion, Rollout};
-use semver::{Version, VersionReq};
+use semver::{Comparator, Op, Prerelease, Version, VersionReq};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+
+/// The oldest installed version a release may be offered to: 1.1.5, the
+/// first platform version with the new database names (decision 0088 of
+/// the core). An installation made before it is moved by reinstall and
+/// restore, never updated in place, so `upgrade_from` may admit no
+/// version below it.
+pub const UPGRADE_FROM_FLOOR: Version = Version::new(1, 1, 5);
+
+/// The lowest version `c` admits, or `None` when it has no lower bound.
+/// `>1.1.4` admits no release below 1.1.5 (nor its pre-releases, which a
+/// comparator without one never matches).
+fn lowest(c: &Comparator) -> Option<Version> {
+    let (minor, patch) = (c.minor.unwrap_or(0), c.patch.unwrap_or(0));
+    let at = |major, minor, patch| Version {
+        pre: c.pre.clone(),
+        ..Version::new(major, minor, patch)
+    };
+    match c.op {
+        Op::Exact | Op::GreaterEq | Op::Tilde | Op::Caret | Op::Wildcard => {
+            Some(at(c.major, minor, patch))
+        }
+        Op::Greater => Some(match (c.minor, c.patch) {
+            (None, _) => Version::new(c.major + 1, 0, 0),
+            (Some(m), None) => Version::new(c.major, m + 1, 0),
+            (Some(_), Some(_)) if c.pre == Prerelease::EMPTY => {
+                Version::new(c.major, minor, patch + 1)
+            }
+            // `>1.1.5-alpha` admits `1.1.5-beta`: its own version is the floor.
+            (Some(_), Some(_)) => at(c.major, minor, patch),
+        }),
+        _ => None,
+    }
+}
+
+/// Refuses an `upgrade_from` that admits a version below
+/// [`UPGRADE_FROM_FLOOR`]: its comparators all hold, so the highest of
+/// their lower bounds is its own.
+fn check_upgrade_from(req: &VersionReq) -> Result<(), String> {
+    let lowest = req.comparators.iter().filter_map(lowest).max();
+    match lowest {
+        Some(v) if v >= UPGRADE_FROM_FLOOR => Ok(()),
+        _ => Err(format!(
+            "upgrade_from {req} admits versions below {UPGRADE_FROM_FLOOR}: \
+             an installation older than it is not updated in place"
+        )),
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -99,6 +146,7 @@ pub fn read(path: &Path) -> Result<Release, String> {
 /// The platform version in `text`, its packages read from under `dir`.
 pub fn parse(text: &str, dir: &Path) -> Result<Release, String> {
     let input: Input = toml::from_str(text).map_err(|e| e.to_string())?;
+    check_upgrade_from(&input.upgrade_from)?;
     let mut pilots = Vec::with_capacity(input.rollout.pilots.len());
     for id in &input.rollout.pilots {
         agent::config::check_installation(id).map_err(|e| format!("pilot: {e}"))?;

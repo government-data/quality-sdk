@@ -266,13 +266,15 @@ EOF
 
 # --- 2. Publish -------------------------------------------------------------
 
+# upgrade_from admits nothing below publish's floor (1.1.5); the test
+# installation has nothing installed, so it is offered the version anyway.
 publication() { # publication version [image]: a version file for the test module
   mkdir -p "$WORK/$1"
   echo "quality-sdk publish check $RUN $1" >"$WORK/$1/README"
   tar -czf "$WORK/$1/qs-verify.tar.gz" -C "$WORK/$1" README
   cat >"$WORK/$1/version.toml" <<EOF
 version = "$1"
-upgrade_from = "<$1"
+upgrade_from = ">=1.1.5"
 notes = "A test version of tools/verify/publish-aws.sh ($RUN)."
 
 [rollout]

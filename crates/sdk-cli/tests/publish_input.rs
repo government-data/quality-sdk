@@ -6,7 +6,7 @@ use std::path::Path;
 
 use common::dir;
 use index_model::installation_hash;
-use sdk_cli::publish::input::{parse, read};
+use sdk_cli::publish::input::{parse, read, UPGRADE_FROM_FLOOR};
 
 const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -97,5 +97,40 @@ fn an_unknown_field_a_bad_pilot_a_missing_package_or_a_bad_name_is_refused() {
     let reserved = file("").replace("[modules.quality-data", "[modules.tools");
     assert!(parse(&reserved, &d).unwrap_err().contains("reserved"));
     assert!(parse(&file(""), Path::new("/nonexistent")).is_err());
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn an_upgrade_from_that_admits_a_version_below_the_floor_is_refused() {
+    let d = with_packages("input-floor");
+    assert_eq!(UPGRADE_FROM_FLOOR.to_string(), "1.1.5");
+    let with = |req: &str| file("").replace(">=1.3.0, <1.4.0", req);
+    for req in [
+        "*",
+        "<1.4.0",
+        ">=1.1.4",
+        ">=1.1.5-rc.1",
+        ">1.1.5-alpha",
+        "^1",
+        "~1.1",
+        "1.1.*",
+        "=1.1.4",
+        ">=1.0.0, <1.4.0",
+    ] {
+        let e = parse(&with(req), &d).unwrap_err();
+        assert!(e.contains("below 1.1.5"), "{req}: {e}");
+    }
+    for req in [
+        ">=1.1.5",
+        ">1.1.4",
+        ">1.1",
+        "^1.1.5",
+        "~1.2",
+        "1.2.*",
+        "=1.1.5",
+        "<1.4.0, >=1.1.6",
+    ] {
+        parse(&with(req), &d).unwrap_or_else(|e| panic!("{req}: {e}"));
+    }
     std::fs::remove_dir_all(d).unwrap();
 }
