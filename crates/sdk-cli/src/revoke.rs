@@ -1,4 +1,4 @@
-//! `quality-sdk revoke` (decision 0001): an installation's certificate
+//! `qsdk revoke` (decision 0001): an installation's certificate
 //! added to the installations' CRL, signed with the CA, kept in a file and
 //! imported into Roles Anywhere, so the installation gets no more
 //! credentials.

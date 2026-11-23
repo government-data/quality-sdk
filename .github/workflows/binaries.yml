@@ -1,5 +1,5 @@
 # Release binaries for a server (decision 0004 step 7): `quality-data-agent`
-# and `quality-sdk` built in release on Ubuntu 24.04 (glibc), so they name
+# and `qsdk` built in release on Ubuntu 24.04 (glibc), so they name
 # the system's loader. Uploaded as workflow artifacts, which expire by
 # themselves; no release is published. Public repository: GitHub-hosted
 # runners only, read-only token, no AWS credentials.
@@ -40,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          for bin in quality-data-agent quality-sdk; do
+          for bin in quality-data-agent qsdk; do
             cp "target/release/$bin" "dist/$bin"
             file "dist/$bin" | tee "dist/$bin.file"
             ldd "dist/$bin" | tee "dist/$bin.ldd"
@@ -52,13 +52,13 @@ jobs:
             fi
             "dist/$bin" --help >/dev/null
           done
-          (cd dist && sha256sum quality-data-agent quality-sdk | tee SHA256SUMS)
+          (cd dist && sha256sum quality-data-agent qsdk | tee SHA256SUMS)
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: binaries-${{ github.sha }}
           path: |
             dist/quality-data-agent
-            dist/quality-sdk
+            dist/qsdk
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 14

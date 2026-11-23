@@ -39,7 +39,7 @@ output "index_public_key_pem" {
 }
 
 output "enrolment_officers_group" {
-  description = "The IAM group whose members may revoke installations (`quality-sdk revoke`)."
+  description = "The IAM group whose members may revoke installations (`qsdk revoke`)."
   value       = aws_iam_group.enrolment_officers.name
 }
 

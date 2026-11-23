@@ -1,4 +1,4 @@
-//! `quality-sdk`: enrol an installation, sign its enrolment, revoke it,
+//! `qsdk`: enrol an installation, sign its enrolment, revoke it,
 //! publish a platform version (decision 0001).
 
 use std::path::{Path, PathBuf};
@@ -9,7 +9,7 @@ use sdk_cli::args::Args;
 use sdk_cli::pki::{self, Ca};
 
 const USAGE: &str = "\
-usage: quality-sdk <command> [options]
+usage: qsdk <command> [options]
 
 commands:
   enrol --installation ID [--root DIR]
@@ -76,7 +76,7 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         "-V" | "--version" => {
-            println!("quality-sdk {}", env!("CARGO_PKG_VERSION"));
+            println!("qsdk {}", env!("CARGO_PKG_VERSION"));
             return ExitCode::SUCCESS;
         }
         other => return usage(&format!("unknown command {other:?}")),
@@ -110,7 +110,7 @@ fn enrol(args: &Args) -> Result<(), String> {
         eprintln!("key       {key} (kept)");
     }
     eprintln!("request   {}", pki::path(&paths.certificate_request()));
-    eprintln!("Send the request below to the CA's holder for `quality-sdk sign-enrolment`;");
+    eprintln!("Send the request below to the CA's holder for `qsdk sign-enrolment`;");
     eprintln!(
         "put the certificate they return at {}.",
         pki::path(&paths.certificate())

@@ -1,4 +1,4 @@
-# Revoking an installation (decision 0001): `quality-sdk revoke` signs the
+# Revoking an installation (decision 0001): `qsdk revoke` signs the
 # installations' CRL offline and puts it into Roles Anywhere as the trust
 # anchor's CRL. The people who revoke belong to this group; Terraform creates
 # the group and its policy, never its members.

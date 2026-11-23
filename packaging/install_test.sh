@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests packaging/install.sh under --root directories, with fakes of docker,
-# quality-data-agent and quality-sdk on PATH: no Docker, no AWS, no root.
+# quality-data-agent and qsdk on PATH: no Docker, no AWS, no root.
 # Its arguments and refusals, Docker checked and installed with
 # --install-docker (fakes of apt-get, curl, gpg and dpkg), a whole install (the agent's three runs and
 # the core's commands between them, in core decision 0082's order), the
@@ -69,7 +69,7 @@ rm -f "$upd/install.json"
 EOF
 # No waiting between app-machine's tries.
 printf '#!/bin/sh\n' >"$FAKES/sleep"
-cat >"$FAKES/quality-sdk" <<'EOF'
+cat >"$FAKES/qsdk" <<'EOF'
 #!/usr/bin/env bash
 echo "sdk $*" >>"$QD_TEST_LOG"
 d="$QD_TEST_ROOT/etc/quality-data/enrolment"
@@ -117,7 +117,7 @@ new_root() { # new_root NAME: a server of its own, and the arguments for it
     --trust-anchor-arn arn:aws:rolesanywhere:us-east-1:1:trust-anchor/a
     --profile-arn arn:aws:rolesanywhere:us-east-1:1:profile/p --role-arn arn:aws:iam::1:role/r
     --index-key "$WORK/index-key.pem" --domain quality.example --machine-name app.internal
-    --agent "$FAKES/quality-data-agent" --sdk "$FAKES/quality-sdk"
+    --agent "$FAKES/quality-data-agent" --sdk "$FAKES/qsdk"
     --signing-helper "$FAKES/aws_signing_helper" --root "$ROOT")
 }
 new_root root
