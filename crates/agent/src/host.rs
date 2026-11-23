@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use module_manifest::Manifest;
 use serde::Serialize;
 use updater::engine::{CloudError, Drain, Host, Installed, Offer, OfferedPackage};
 use updater::policy::Orders;
@@ -47,9 +48,8 @@ pub trait Compose {
     fn installed(&self) -> Result<Installed, String>;
     /// Every installed module's health.
     fn modules_healthy(&self) -> Result<(), String>;
-    /// The `drain.path` of the installed module's manifest (none: it has no
-    /// work to drain).
-    fn drain_path(&self, module: &str) -> Result<Option<String>, String>;
+    /// The installed module's manifest (none: its package has none).
+    fn manifest(&self, module: &str) -> Result<Option<Manifest>, String>;
 }
 
 /// The database: back up, check the backup, restore.
@@ -92,6 +92,57 @@ pub struct InstalledModule {
     /// Its manifest's `drain.path`, which the module serves on its route of
     /// the `internal` entry point (`null`: no work to drain).
     pub drain_path: Option<String>,
+    /// Its route's path on the web entry point (`null`: no route).
+    pub route_path: Option<String>,
+    /// Its entry in the core's apps menu (`null`: none).
+    pub menu: Option<ModuleMenu>,
+}
+
+/// A module's menu entry as `PUT /updater/v1/modules` names it: its label
+/// and the page it opens, in English and Spanish (decision 0002).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModuleMenu {
+    pub label: InLanguages,
+    pub path: InLanguages,
+}
+
+/// A text in each language the web speaks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InLanguages {
+    pub en: String,
+    pub es: String,
+}
+
+impl InstalledModule {
+    /// `name` at `version`, with what its manifest declares.
+    pub fn new(name: &str, version: &str, manifest: Option<&Manifest>) -> Self {
+        let route = manifest.and_then(|m| m.route.as_ref());
+        let menu = manifest
+            .and_then(|m| m.menu.as_ref())
+            .zip(route)
+            .map(|(menu, route)| {
+                let path = menu.paths(route);
+                ModuleMenu {
+                    label: InLanguages {
+                        en: menu.label.en.clone(),
+                        es: menu.label.es.clone(),
+                    },
+                    path: InLanguages {
+                        en: path.en,
+                        es: path.es,
+                    },
+                }
+            });
+        Self {
+            name: name.into(),
+            version: version.into(),
+            drain_path: manifest
+                .and_then(|m| m.drain.as_ref())
+                .map(|d| d.path.clone()),
+            route_path: route.map(|r| r.path.clone()),
+            menu,
+        }
+    }
 }
 
 /// The time: the system's, or a fake one in tests.
@@ -175,11 +226,8 @@ impl AgentHost {
                 .modules
                 .iter()
                 .map(|(name, m)| {
-                    Ok(InstalledModule {
-                        name: name.clone(),
-                        version: m.version.clone(),
-                        drain_path: compose.drain_path(name)?,
-                    })
+                    let manifest = compose.manifest(name)?;
+                    Ok(InstalledModule::new(name, &m.version, manifest.as_ref()))
                 })
                 .collect::<Result<Vec<_>, String>>()?;
             self.adapters.api.put_modules(&modules)

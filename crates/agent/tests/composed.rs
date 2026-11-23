@@ -12,6 +12,7 @@ use agent::host::{
 };
 use agent::paths::Paths;
 use chrono::{DateTime, TimeZone, Utc};
+use module_manifest::Manifest;
 use updater::engine::{advance, CloudError, Drain, Installed, Offer, OfferedPackage, Who};
 use updater::policy::Orders;
 use updater::state::{Module, Modules, Outcome, OutcomeKind, Phase, State};
@@ -114,8 +115,9 @@ impl Compose for FakeCompose {
         }
         Ok(())
     }
-    fn drain_path(&self, module: &str) -> Result<Option<String>, String> {
-        Ok((module == "quality-data").then(|| "/internal/drain".into()))
+    fn manifest(&self, module: &str) -> Result<Option<Manifest>, String> {
+        let text = format!("name: {module}\nversion: 1.0.0\ndrain: {{ path: /internal/drain }}\n");
+        Ok((module == "quality-data").then(|| Manifest::parse(&text).unwrap()))
     }
 }
 

@@ -23,5 +23,6 @@ pub mod package_archive;
 pub mod package_files;
 pub mod paths;
 pub mod postgres;
+pub mod routes;
 pub mod service;
 pub mod update;

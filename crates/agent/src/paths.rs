@@ -90,6 +90,14 @@ impl Paths {
         &self.install
     }
 
+    /// The folder the core's Traefik watches (core decision 0081,
+    /// `/opt/quality-data/quality-data/internal`), where the agent writes
+    /// each module's route, `module-<module>.yml` (decision 0002): a file
+    /// put in a subfolder after Traefik started is not read.
+    pub fn routes_dir(&self) -> PathBuf {
+        self.install.join("quality-data/internal")
+    }
+
     /// `/var/lib/quality-data`.
     pub fn data_dir(&self) -> &Path {
         &self.data

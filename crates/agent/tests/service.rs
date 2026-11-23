@@ -14,6 +14,7 @@ use agent::host::{Adapters, AgentHost, Clock, Cloud, Compose, Database, Packages
 use agent::service::{round, run, run_with};
 use aws_client::http::Https;
 use chrono::{DateTime, TimeZone, Utc};
+use module_manifest::Manifest;
 use updater::engine::{CloudError, Installed, Offer, OfferedPackage};
 use updater::state::{Modules, Outcome, State};
 
@@ -120,7 +121,7 @@ impl Compose for Fakes {
     fn modules_healthy(&self) -> Result<(), String> {
         Ok(())
     }
-    fn drain_path(&self, _module: &str) -> Result<Option<String>, String> {
+    fn manifest(&self, _module: &str) -> Result<Option<Manifest>, String> {
         Ok(None)
     }
 }
