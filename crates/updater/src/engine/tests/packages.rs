@@ -132,3 +132,25 @@ fn two_packages_for_one_module_are_refused() {
     let err = apply_order(&[package("m", "1.0.0"), package("m", "1.0.1")]).unwrap_err();
     assert!(err.contains("two packages for the module m"), "{err}");
 }
+
+#[test]
+fn a_module_the_installation_has_not_added_is_left_alone() {
+    let f = Fake::new();
+    let mut o = offer("1.3.0");
+    let mut docs = o.modules["orchestrator"].clone();
+    docs.images = [("web".to_string(), "r/docs:0.2.0@sha256:a".to_string())].into();
+    o.modules.insert("docs".into(), docs);
+    o.packages.push(package("docs", "1.3.0"));
+    *f.cloud.borrow_mut() = Some(Ok(o));
+    let mut s = State::new("1.2.0");
+    run(&f, &mut s, Who::Person);
+    assert_eq!(s.installed_version, "1.3.0");
+    let calls = f.calls.borrow();
+    assert!(!calls.iter().any(|c| c.contains("docs")), "{calls:?}");
+    let put = f.put.borrow();
+    let (_, modules) = put.last().unwrap();
+    assert_eq!(
+        modules.keys().collect::<Vec<_>>(),
+        ["orchestrator", "quality-data"]
+    );
+}

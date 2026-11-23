@@ -121,6 +121,7 @@ fn check(host: &dyn Host, s: &mut State, now: DateTime<Utc>) -> Result<(), Strin
         }
     };
     s.warning = None;
+    let offer = installed_only(host, offer);
     // Never downgrade, even if the cloud gets it wrong.
     if !is_newer(&offer.version, &s.installed_version) {
         s.available = None;
@@ -143,6 +144,23 @@ fn check(host: &dyn Host, s: &mut State, now: DateTime<Utc>) -> Result<(), Strin
     }
     host.save(s)?;
     prepare(host, s, offer, now)
+}
+
+/// Of the offered version, only the modules installed now (decision 0003,
+/// the amendment of 2026-11-23): one the installation has not added is
+/// left alone; `qd module add` adds it. With nothing recorded (the first
+/// install) or no module recorded, every module.
+fn installed_only(host: &dyn Host, mut offer: Offer) -> Offer {
+    let Ok(installed) = host.installed() else {
+        return offer;
+    };
+    if installed.modules.is_empty() {
+        return offer;
+    }
+    let has = |m: &str| installed.modules.contains_key(m);
+    offer.modules.retain(|m, _| has(m));
+    offer.packages.retain(|p| has(&p.module));
+    offer
 }
 
 /// Check the space, download every module's package in the order they are
