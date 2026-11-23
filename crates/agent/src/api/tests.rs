@@ -161,17 +161,18 @@ fn the_version_that_answers_is_read_and_a_refusal_says_why() {
 #[test]
 fn the_installed_modules_are_put_whole() {
     let (base, sent) = server(&[("PUT /updater/v1/modules", 204, "")]);
+    let manifest = |text: &str| module_manifest::Manifest::parse(text).unwrap();
+    let orchestrator =
+        manifest("name: orchestrator\nversion: 2.0.1\ndrain: { path: /internal/drain }\n");
+    let docs = manifest(
+        "name: docs\nversion: 0.2.0\nroute: { path: /docs, service: web, port: 8080 }\n\
+         auth: forward\nmenu: { label: { en: User guide, es: Guía de usuario }, \
+         path: { en: /docs/, es: /docs/es/ } }\n",
+    );
     let modules = [
-        InstalledModule {
-            name: "orchestrator".into(),
-            version: "2.0.1".into(),
-            drain_path: Some("/internal/drain".into()),
-        },
-        InstalledModule {
-            name: "quality-data".into(),
-            version: "1.4.0".into(),
-            drain_path: None,
-        },
+        InstalledModule::new("orchestrator", "2.0.1", Some(&orchestrator)),
+        InstalledModule::new("quality-data", "1.4.0", None),
+        InstalledModule::new("docs", "0.2.0", Some(&docs)),
     ];
     api(&base).put_modules(&modules).unwrap();
     let sent = sent.lock().unwrap();
@@ -183,8 +184,13 @@ fn the_installed_modules_are_put_whole() {
     assert_eq!(
         body,
         json!({"modules": [
-            {"name": "orchestrator", "version": "2.0.1", "drain_path": "/internal/drain"},
-            {"name": "quality-data", "version": "1.4.0", "drain_path": null},
+            {"name": "orchestrator", "version": "2.0.1", "drain_path": "/internal/drain",
+             "route_path": null, "menu": null},
+            {"name": "quality-data", "version": "1.4.0", "drain_path": null,
+             "route_path": null, "menu": null},
+            {"name": "docs", "version": "0.2.0", "drain_path": null, "route_path": "/docs",
+             "menu": {"label": {"en": "User guide", "es": "Guía de usuario"},
+                      "path": {"en": "/docs/", "es": "/docs/es/"}}},
         ]})
     );
     let (base, _) = server(&[("PUT /updater/v1/modules", 400, r#"{"error":"bad module"}"#)]);

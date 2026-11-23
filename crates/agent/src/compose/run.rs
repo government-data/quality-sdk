@@ -2,6 +2,7 @@
 //! brought up in its order, waiting for its healthchecks, stopped, and its
 //! health.
 
+use module_manifest::Manifest;
 use updater::engine::Installed;
 use updater::state::Modules;
 
@@ -33,7 +34,8 @@ impl crate::host::Compose for DockerCompose {
     /// for its healthchecks. Its containers are recreated (decision 0005):
     /// every start follows a version put (an apply, going back, a restore,
     /// the install), and an unchanged container would keep the replaced
-    /// version's bind-mounted files.
+    /// version's bind-mounted files. Then each module's route is written
+    /// from its manifest and the routes of modules no longer there removed.
     fn start(&self) -> Result<(), String> {
         let r = self.record_or_error()?;
         for module in r.stopping.iter().rev() {
@@ -58,7 +60,13 @@ impl crate::host::Compose for DockerCompose {
             )
             .map_err(|e| format!("{module}: {e}"))?;
         }
-        Ok(())
+        let installed = r
+            .now
+            .order
+            .iter()
+            .map(|m| Ok((m.clone(), crate::manifests::read(&self.install, m)?)))
+            .collect::<Result<Vec<_>, String>>()?;
+        crate::routes::sync(&self.routes, &installed)
     }
 
     /// Every module stopped, last started first (to restore the database
@@ -78,10 +86,9 @@ impl crate::host::Compose for DockerCompose {
         DockerCompose::installed(self)
     }
 
-    /// From the module's `module.yaml`, where its package was put.
-    fn drain_path(&self, module: &str) -> Result<Option<String>, String> {
-        let m = crate::manifests::read(&self.install, module)?;
-        Ok(m.and_then(|m| m.drain).map(|d| d.path))
+    /// The module's `module.yaml`, where its package was put.
+    fn manifest(&self, module: &str) -> Result<Option<Manifest>, String> {
+        crate::manifests::read(&self.install, module)
     }
 
     /// Every module's health: its containers' Compose healthchecks, the

@@ -13,6 +13,9 @@
 //!   `/var/lib/quality-data/updater/installed.json`: the platform version,
 //!   its modules, the order they start in (a module after those it
 //!   requires) and the one it replaced, to go back to in its order.
+//! - **Routes**: once every module is up, each installed module's Traefik
+//!   route is written from its manifest and the others' removed
+//!   ([`crate::routes::sync`]).
 
 use std::path::{Path, PathBuf};
 
@@ -33,6 +36,8 @@ pub struct DockerCompose {
     pub install: PathBuf,
     /// `/var/lib/quality-data/updater/installed.json`.
     pub record: PathBuf,
+    /// Where the modules' Traefik routes go ([`crate::routes`]).
+    pub routes: PathBuf,
     pub runner: Box<dyn Runner>,
     /// How long `up --wait` waits for the healthchecks.
     pub wait_secs: u64,
@@ -122,6 +127,7 @@ impl DockerCompose {
         Self {
             install: paths.install_dir().to_path_buf(),
             record: paths.installed_record(),
+            routes: paths.routes_dir(),
             runner: Box::new(crate::command::System),
             wait_secs: 300,
         }

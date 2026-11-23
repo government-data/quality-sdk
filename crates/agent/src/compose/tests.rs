@@ -292,23 +292,56 @@ fn a_manifest_s_health_adds_its_services_and_its_checks_to_the_floor() {
 }
 
 #[test]
-fn a_module_s_drain_path_is_read_from_its_manifest() {
+fn a_module_s_manifest_is_read_where_its_package_was_put() {
     use crate::host::Compose;
     let r = root("drain-path");
     let c = compose(&r, Fake::default());
     let current = r.join("opt/quality-data/orchestrator/current");
     std::fs::create_dir_all(&current).unwrap();
-    assert_eq!(c.drain_path("orchestrator").unwrap(), None);
+    assert_eq!(c.manifest("orchestrator").unwrap(), None);
     let yaml = |drain: &str| format!("name: orchestrator\nversion: 2.0.0\n{drain}");
     std::fs::write(current.join("module.yaml"), yaml("")).unwrap();
-    assert_eq!(c.drain_path("orchestrator").unwrap(), None);
+    assert_eq!(c.manifest("orchestrator").unwrap().unwrap().drain, None);
     let drain = "drain: { path: /internal/drain }\n";
     std::fs::write(current.join("module.yaml"), yaml(drain)).unwrap();
     assert_eq!(
-        c.drain_path("orchestrator").unwrap().as_deref(),
+        c.manifest("orchestrator")
+            .unwrap()
+            .unwrap()
+            .drain
+            .map(|d| d.path)
+            .as_deref(),
         Some("/internal/drain")
     );
     std::fs::write(current.join("module.yaml"), "name: other\nversion: 2.0.0\n").unwrap();
-    assert!(c.drain_path("orchestrator").is_err());
+    assert!(c.manifest("orchestrator").is_err());
+    std::fs::remove_dir_all(r).unwrap();
+}
+
+#[test]
+fn start_writes_the_installed_modules_routes_and_removes_the_others() {
+    use crate::host::Compose;
+    let r = root("routes");
+    let c = compose(&r, Fake::default());
+    c.put_version("1.3.0", &modules("1.3.0", 'a'), &[]).unwrap();
+    let current = r.join("opt/quality-data/lake-rustfs/current");
+    std::fs::create_dir_all(&current).unwrap();
+    std::fs::write(
+        current.join("module.yaml"),
+        "name: lake-rustfs\nversion: 1.3.0\nroute: { path: /lake, service: console, port: 9001 }\n",
+    )
+    .unwrap();
+    let routes = r.join("opt/quality-data/quality-data/internal");
+    std::fs::create_dir_all(&routes).unwrap();
+    std::fs::write(routes.join("internal.yml"), "core's").unwrap();
+    std::fs::write(routes.join("module-docs.yml"), "removed module").unwrap();
+    c.start().unwrap();
+    assert!(
+        std::fs::read_to_string(routes.join("module-lake-rustfs.yml"))
+            .unwrap()
+            .contains("http://lake-rustfs-console:9001")
+    );
+    assert!(!routes.join("module-docs.yml").exists());
+    assert!(routes.join("internal.yml").exists());
     std::fs::remove_dir_all(r).unwrap();
 }
