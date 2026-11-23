@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Tests packaging/install.sh under --root directories, with fakes of docker,
-# quality-data-agent and qsdk on PATH: no Docker, no AWS, no root.
+# quality-data-agent on PATH: no Docker, no AWS, no root.
 # Its arguments and refusals, Docker checked and installed with
 # --install-docker (fakes of apt-get, curl, gpg and dpkg), a whole install (the agent's three runs and
 # the core's commands between them, in core decision 0082's order), the
 # files and their modes and owners, a second run doing nothing, runs
 # cut between the agent's runs then resumed, qd linked to the agent (another
-# qd refused), and an .env from before the
+# qd refused), the agent enrolling (--sdk refused), and an .env from before the
 # core's new names or QD_TLS_MODE refused.
 #
 #   packaging/install_test.sh
@@ -50,6 +50,11 @@ EOF
 cat >"$FAKES/quality-data-agent" <<'EOF'
 #!/usr/bin/env bash
 echo "agent $*" >>"$QD_TEST_LOG"
+if [[ "$*" == *" enrol --installation "* ]]; then
+  d="$QD_TEST_ROOT/etc/quality-data/enrolment"
+  echo key >"$d/private-key.pem"; echo "REQUEST" >"$d/request.csr"
+  exit 0
+fi
 upd="$QD_TEST_ROOT/var/lib/quality-data/updater"
 mkdir -p "$upd"
 at() { printf '{\n  "version": "1.0.0",\n  "step": "%s"\n}\n' "$1" >"$upd/install.json"; }
@@ -70,12 +75,6 @@ rm -f "$upd/install.json"
 EOF
 # No waiting between app-machine's tries.
 printf '#!/bin/sh\n' >"$FAKES/sleep"
-cat >"$FAKES/qsdk" <<'EOF'
-#!/usr/bin/env bash
-echo "sdk $*" >>"$QD_TEST_LOG"
-d="$QD_TEST_ROOT/etc/quality-data/enrolment"
-echo key >"$d/private-key.pem"; echo "REQUEST" >"$d/request.csr"
-EOF
 # Docker's apt repository: installing docker-ce makes QD_DOCKER_BIN.
 cat >"$FAKES/apt-get" <<'EOF'
 #!/usr/bin/env bash
@@ -118,13 +117,13 @@ new_root() { # new_root NAME: a server of its own, and the arguments for it
     --trust-anchor-arn arn:aws:rolesanywhere:us-east-1:1:trust-anchor/a
     --profile-arn arn:aws:rolesanywhere:us-east-1:1:profile/p --role-arn arn:aws:iam::1:role/r
     --index-key "$WORK/index-key.pem" --domain quality.example --machine-name app.internal
-    --agent "$FAKES/quality-data-agent" --sdk "$FAKES/qsdk"
+    --agent "$FAKES/quality-data-agent"
     --signing-helper "$FAKES/aws_signing_helper" --root "$ROOT")
 }
 new_root root
 run() { rc=0; "$HERE/install.sh" "$@" >"$WORK/out" 2>&1 || rc=$?; }
 # The core's commands and the agent's runs, in the order they ran.
-ORDER='agent .*install|ca-init|up --detach --no-build postgres|run --rm --no-deps (app-machine|updater-certificate)'
+ORDER='agent( --root [^ ]+)? install|ca-init|up --detach --no-build postgres|run --rm --no-deps (app-machine|updater-certificate)'
 order() { grep -oE "$ORDER" "$WORK/log" | uniq | tr '\n' ';'; }
 
 # --- arguments and refusals ----------------------------------------------------------
@@ -167,6 +166,15 @@ rm "$ROOT/usr/local/bin/qd" && ln -s /usr/bin/true "$ROOT/usr/local/bin/qd"
 run "${ARGS[@]}"
 check "a qd linked elsewhere is refused (2) and kept" bash -c \
   "test $rc = 2 && test \"\$(readlink '$ROOT/usr/local/bin/qd')\" = /usr/bin/true"
+new_root with-sdk
+run "${ARGS[@]}" --sdk "$WORK/qsdk"
+check "--sdk is refused (2), saying the agent enrols, nothing laid out" bash -c \
+  "test $rc = 2 && grep -q 'qd enrol' '$WORK/out' && ! test -e '$ROOT/etc/quality-data'"
+new_root old-sdk
+mkdir -p "$ROOT/usr/local/bin" && echo old >"$ROOT/usr/local/bin/qsdk"
+run "${ARGS[@]}"
+check "a qsdk left by an earlier install is noticed and kept" bash -c \
+  "test $rc = 10 && grep -q 'qsdk is no longer used' '$WORK/out' && grep -qx old '$ROOT/usr/local/bin/qsdk'"
 new_root root
 
 # --- Docker installed with --install-docker -------------------------------------------
@@ -207,7 +215,9 @@ new_root root
 run "${ARGS[@]}"
 check "without a signed certificate it prints the request and exits 10" \
   bash -c "test $rc = 10 && grep -q REQUEST '$WORK/out'"
-check "the agent is not run before the enrolment" bash -c "! grep -q '^agent' '$WORK/log'"
+check "the agent enrols the server, with no qsdk" bash -c \
+  "grep -qx 'agent --root $ROOT enrol --installation inst-0001' '$WORK/log' && ! test -e '$ROOT/usr/local/bin/qsdk'"
+check "the agent's install is not run before the enrolment" bash -c "! grep -Eq '^agent( --root [^ ]+)? install' '$WORK/log'"
 
 # --- a whole install --------------------------------------------------------------------
 
@@ -247,7 +257,7 @@ cp "$MOD/.env" "$WORK/env.before"
 run "${ARGS[@]}"
 check "run again it finishes (0)" test "$rc" = 0
 check "run again it neither installs nor runs a command" \
-  bash -c "! grep -Eq '^agent|^sdk|ca-init|up --detach|run --rm' '$WORK/log'"
+  bash -c "! grep -Eq '^agent|ca-init|up --detach|run --rm' '$WORK/log'"
 check "run again the .env and its passwords are kept" cmp -s "$WORK/env.before" "$MOD/.env"
 check "run again qd is still the link to quality-data-agent" \
   test "$(readlink "$ROOT/usr/local/bin/qd")" = quality-data-agent
