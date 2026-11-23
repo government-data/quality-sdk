@@ -17,13 +17,15 @@ variable "modules" {
     fails while its repositories still hold images (force_delete is off), so
     no published version disappears by mistake. Third-party images a module
     runs are mirrored into its own repositories by digest
-    (tools/mirror-image.sh): quality-data's traefik and postgres.
+    (tools/mirror-image.sh): quality-data's traefik and postgres,
+    lake-rustfs's rustfs (its own image is admin, the lake admin adapter).
   EOT
   type        = map(list(string))
   default = {
     "quality-data" = ["api", "web", "traefik", "postgres"]
     orchestrator   = ["api", "web"]
     docs           = ["web"]
+    "lake-rustfs"  = ["rustfs", "admin"]
   }
   validation {
     condition     = !contains(keys(var.modules), "tools")
@@ -105,9 +107,9 @@ variable "module_publishers" {
       repo  = number
     }))
   }))
-  # quality-data/core and quality-data/docs send GitHub's immutable subject
-  # (owner 359174349; repositories 1465567877 and 1467989556), so their
-  # roles must trust that form.
+  # quality-data/core, quality-data/docs and quality-data/lake-rustfs send
+  # GitHub's immutable subject (owner 359174349; repositories 1465567877,
+  # 1467989556 and 1469349992), so their roles must trust that form.
   default = {
     "quality-data" = {
       repo   = "quality-data/core"
@@ -118,6 +120,11 @@ variable "module_publishers" {
       repo   = "quality-data/docs"
       images = ["web"]
       ids    = { owner = 359174349, repo = 1467989556 }
+    }
+    "lake-rustfs" = {
+      repo   = "quality-data/lake-rustfs"
+      images = ["admin"]
+      ids    = { owner = 359174349, repo = 1469349992 }
     }
   }
   validation {
