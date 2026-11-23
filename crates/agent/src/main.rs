@@ -8,55 +8,8 @@ use std::time::Duration;
 use agent::config::Config;
 use agent::paths::Paths;
 
-const USAGE: &str = "\
-usage: qd [--root DIR] <command>
-
-qd is the short name of quality-data-agent, the installation's agent.
-
-commands:
-  enrol     make this server's enrolment key (kept here, 0600,
-            /etc/quality-data/enrolment/private-key.pem) and its
-            certificate request (enrolment/request.csr, OU=installation,
-            CN=ID), printed for the operator to sign with `qsdk
-            sign-enrolment`. Needs --installation ID. Run again, it keeps
-            the key
-  config    read and check /etc/quality-data/agent.toml
-  check     check the AWS side end to end: credentials, the signed index,
-            the registry and one report of kind `check` (no image is
-            pulled, nothing published; packages only with --download)
-  install   lay out the first platform version (decision 0004): choose,
-            prepare, start; once the internal certificate exists, verify.
-            Exit status 4: prepared, nothing started; run the module's
-            first-start commands, then install again. Exit status 3:
-            started, the internal certificate is missing; run it again
-            once it is issued
-  run       the agent as a service: run the update engine with the real
-            host in rounds, until stopped (needs [api] in agent.toml)
-  renew     renew the internal certificate when due (less than 30 days
-            left), or now with --force; refused while the service runs
-            (stop it first)
-  update    ask for an update now, for a person on the server (decision
-            0007): the request goes through quality-data, as the web's
-            Update now; the running service starts it at its next round,
-            whatever the policy's mode and window
-
-options:
-  --root DIR           the installation's paths under DIR (development)
-  --installation ID    for enrol: the installation's id
-  --installed VERSION  for check: the version to ask an offer for (default:
-                       the state file's, or 0.0.0)
-  --download           for check: download each package of the offer and
-                       check its SHA-256
-  --every SECS         for run: how long a round waits for the next (default
-                       60; the cloud is asked every hour)
-  --once               for run: one round, then exit
-  --force              for renew: renew now, however much is left
-  --wait               for update: wait until the service handled the
-                       request and say how it ended (exit status 1 if it
-                       did not update)
-  --version VERSION    after install: this version of the index, even paused
-                       or outside its rollout (default: the newest that
-                       reaches the installation)";
+/// `qd --help`.
+const USAGE: &str = include_str!("usage.txt");
 
 /// The command line.
 struct Args {
@@ -70,6 +23,8 @@ struct Args {
     version: Option<String>,
     wait: bool,
     force: bool,
+    /// After `module`: the action and the module's name.
+    rest: Vec<String>,
 }
 
 /// The command line read, or how to exit (help, version, a usage error).
@@ -85,6 +40,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, ExitCode> {
         version: None,
         wait: false,
         force: false,
+        rest: Vec::new(),
     };
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -115,7 +71,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, ExitCode> {
                 None => return Err(usage("install --version needs a version")),
             },
             "-h" | "--help" => {
-                println!("{USAGE}");
+                println!("{}", USAGE.trim_end());
                 return Err(ExitCode::SUCCESS);
             }
             "-V" | "--version" => {
@@ -123,6 +79,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, ExitCode> {
                 return Err(ExitCode::SUCCESS);
             }
             other if a.command.is_none() => a.command = Some(other.to_string()),
+            other if a.command.as_deref() == Some("module") => a.rest.push(other.to_string()),
             other => return Err(usage(&format!("unexpected argument {other:?}"))),
         }
     }
@@ -152,13 +109,14 @@ fn main() -> ExitCode {
         Some("run") => run(paths, a.every, a.once),
         Some("update") => update(paths, a.wait),
         Some("renew") => renew(paths, a.force),
+        Some("module") => module(paths, &a.rest),
         Some(other) => usage(&format!("unknown command {other:?}")),
         None => usage("a command is needed"),
     }
 }
 
 fn usage(error: &str) -> ExitCode {
-    eprintln!("error: {error}\n\n{USAGE}");
+    eprintln!("error: {error}\n\n{}", USAGE.trim_end());
     ExitCode::from(2)
 }
 
@@ -321,6 +279,36 @@ fn update(paths: &Paths, wait: bool) -> ExitCode {
             } else {
                 ExitCode::FAILURE
             }
+        }
+        Err(err) => {
+            eprintln!("error: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `module add|remove NAME`, under the agent's lock (decision 0002).
+fn module(paths: &Paths, rest: &[String]) -> ExitCode {
+    use agent::modules::{adapters::Adapters, add, remove};
+    let [action, name] = rest else {
+        return usage("module needs add or remove, and a module's name");
+    };
+    let act = match action.as_str() {
+        "add" => add,
+        "remove" => remove,
+        other => return usage(&format!("module {other:?}: add or remove")),
+    };
+    logs();
+    let done = agent::service::lock(paths)
+        .map_err(|e| format!("{e}: stop the service first (systemctl stop quality-data-agent)"))
+        .and_then(|_lock| act(&Adapters::new(paths)?, name));
+    match done {
+        Ok(warnings) => {
+            for w in warnings {
+                eprintln!("warning: {w}");
+            }
+            println!("{action} {name}: done");
+            ExitCode::SUCCESS
         }
         Err(err) => {
             eprintln!("error: {err}");
