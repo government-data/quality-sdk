@@ -100,9 +100,9 @@ fn properties_and_the_sections_later_steps_define_are_accepted() {
 name: lake-rustfs
 version: 1.0.0
 images: { rustfs: r/lake@sha256:00 }
-route: { path: /lake }
+route: { path: /lake, service: console, port: 9001 }
 auth: oidc
-menu: { label: Lake }
+menu: { label: { en: Lake, es: Lago } }
 consumes: { apis: [core] }
 permissions: { actions: [] }
 config: { keys: [] }

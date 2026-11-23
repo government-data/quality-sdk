@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use serde::de::IgnoredAny;
 use serde::Deserialize;
 
+use crate::route::{Auth, Menu, Route};
 use crate::ManifestError;
 
 /// How long a health check may take when the manifest does not say.
@@ -33,15 +34,18 @@ pub struct Manifest {
     /// module has no work to drain).
     #[serde(default)]
     pub drain: Option<Drain>,
+    /// Where it is served to people (none: it is not).
+    #[serde(default)]
+    pub route: Option<Route>,
+    /// How a person gets through its route (needs `route`).
+    #[serde(default)]
+    pub auth: Option<Auth>,
+    /// Its entry in the core's apps menu (needs `route`).
+    #[serde(default)]
+    pub menu: Option<Menu>,
     // Sections later steps of decision 0002 define: accepted, not read yet.
     #[serde(default)]
     images: Option<IgnoredAny>,
-    #[serde(default)]
-    route: Option<IgnoredAny>,
-    #[serde(default)]
-    auth: Option<IgnoredAny>,
-    #[serde(default)]
-    menu: Option<IgnoredAny>,
     #[serde(default)]
     consumes: Option<IgnoredAny>,
     #[serde(default)]
