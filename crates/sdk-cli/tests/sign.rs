@@ -15,9 +15,10 @@ use x509_cert::der::oid::db::rfc5280;
 use x509_cert::der::{DecodePem, Encode, EncodePem};
 use x509_cert::ext::pkix::{BasicConstraints, ExtendedKeyUsage};
 
+use agent::enrol;
 use common::{ca, dir, name, test_ca};
 use sdk_cli::pki::{public_key_info, subject_values, Ca};
-use sdk_cli::{enrol, sign};
+use sdk_cli::sign;
 
 #[test]
 fn a_signed_enrolment_names_the_installation_and_is_the_cas() {
