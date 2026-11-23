@@ -50,7 +50,7 @@ variable "versions_per_repository" {
 variable "installations_ca_pem" {
   description = <<-EOT
     The PEM certificate of the CA that signs installation certificates
-    (`quality-sdk enrol`). IAM Roles Anywhere trusts it: an installation with
+    (`qsdk enrol`). IAM Roles Anywhere trusts it: an installation with
     a valid certificate from it may pull updates. Its private key never
     reaches AWS or this state.
   EOT

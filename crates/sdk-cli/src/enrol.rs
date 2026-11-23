@@ -1,4 +1,4 @@
-//! `quality-sdk enrol`, on the installation's server (decision 0001): a
+//! `qsdk enrol`, on the installation's server (decision 0001): a
 //! P-256 key made here and kept here (`enrolment/private-key.pem`, PKCS #8,
 //! 0600),
 //! and a certificate request for the CA's holder to sign, with OU

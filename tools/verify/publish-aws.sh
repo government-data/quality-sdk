@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Checks the quality-sdk CLI end to end (decision 0001, step 6) against the
+# Checks the qsdk CLI end to end (decision 0001, step 6) against the
 # applied Terraform in infra/aws, with the agent on the other side. Run by a
 # person, never by an agent or in CI: it calls the real account.
 #
-#   1. `quality-sdk enrol` lays out a test installation's key and request,
-#      `quality-sdk sign-enrolment` signs it for one day with the CA.
-#   2. `quality-sdk publish` publishes a test platform version (one module,
+#   1. `qsdk enrol` lays out a test installation's key and request,
+#      `qsdk sign-enrolment` signs it for one day with the CA.
+#   2. `qsdk publish` publishes a test platform version (one module,
 #      `qs-verify`, with a tiny package and one tiny image) to a channel
 #      that has no index yet, pinned to the Terraform's index key; a second
 #      version is published with the key read from KMS (sequence 2); the
@@ -16,7 +16,7 @@
 #   3. `quality-data-agent check --download` gets the offer (the test
 #      installation is the version's only pilot), downloads the package and
 #      checks its SHA-256.
-#   4. `quality-sdk revoke` imports a test CRL (named after the run) with the
+#   4. `qsdk revoke` imports a test CRL (named after the run) with the
 #      test certificate, and the agent is refused within QD_CRL_WAIT seconds.
 #
 # Everything it creates (the S3 object versions under index/<channel>.json,
@@ -31,7 +31,7 @@
 #   QD_CA_CERT          the CA certificate (default ~/qd-ca/ca.pem)
 #   QD_CA_KEY           the CA private key, read in place (default ~/qd-ca/ca.key)
 #   QD_SDK              the built CLI (default
-#                       ${CARGO_TARGET_DIR:-target}/release/quality-sdk)
+#                       ${CARGO_TARGET_DIR:-target}/release/qsdk)
 #   QD_AGENT            the built agent (default
 #                       ${CARGO_TARGET_DIR:-target}/release/quality-data-agent)
 #   QD_AWS_PROFILE      the person's profile: publishing, revoking, cleanup
@@ -57,7 +57,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CA_CERT="${QD_CA_CERT:-$HOME/qd-ca/ca.pem}"
 CA_KEY="${QD_CA_KEY:-$HOME/qd-ca/ca.key}"
 TARGET="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/release"
-SDK="${QD_SDK:-$TARGET/quality-sdk}"
+SDK="${QD_SDK:-$TARGET/qsdk}"
 AGENT="${QD_AGENT:-$TARGET/quality-data-agent}"
 PERSON_PROFILE="${QD_AWS_PROFILE:-orquestador}"
 CHANNEL="${QD_CHANNEL:-patch}"
@@ -206,7 +206,7 @@ else
   # a published version out.
   ((tagged < 29)) || die "$PUSHED_REPO holds $tagged tagged images: set QD_IMAGE"
   mkdir -p "$WORK/image" "$WORK/docker"
-  echo "quality-sdk publish check $RUN" >"$WORK/image/README"
+  echo "qsdk publish check $RUN" >"$WORK/image/README"
   printf 'FROM scratch\nCOPY README /README\n' >"$WORK/image/Dockerfile"
   docker build --quiet -t "$PUSHED_URL:$RUN" "$WORK/image" >/dev/null
   person ecr get-login-password |
@@ -270,7 +270,7 @@ EOF
 # installation has nothing installed, so it is offered the version anyway.
 publication() { # publication version [image]: a version file for the test module
   mkdir -p "$WORK/$1"
-  echo "quality-sdk publish check $RUN $1" >"$WORK/$1/README"
+  echo "qsdk publish check $RUN $1" >"$WORK/$1/README"
   tar -czf "$WORK/$1/qs-verify.tar.gz" -C "$WORK/$1" README
   cat >"$WORK/$1/version.toml" <<EOF
 version = "$1"

@@ -6,7 +6,7 @@
 #   sudo packaging/install.sh --installation ID --bucket NAME \
 #     --trust-anchor-arn ARN --profile-arn ARN --role-arn ARN \
 #     --index-key index-key.pem --domain APP_DOMAIN --machine-name NAME \
-#     --agent ./quality-data-agent --sdk ./quality-sdk \
+#     --agent ./quality-data-agent --sdk ./qsdk \
 #     [--certificate signed.pem] [--channel stable] [--region us-east-1] \
 #     [--signing-helper FILE] [--version V] [--updater-name NAME] \
 #     [--tls-mode file|acme] [--tls-cert FILE --tls-key FILE] [--acme-email ADDRESS] \
@@ -20,9 +20,9 @@
 #    changed (decision 0007 point 1).
 # 2. /etc/quality-data, /opt/quality-data, /var/lib/quality-data.
 # 3. The binaries in /usr/local/bin; aws_signing_helper checked by SHA-256.
-# 4. The enrolment: `quality-sdk enrol` makes the key and the request; with
+# 4. The enrolment: `qsdk enrol` makes the key and the request; with
 #    no signed certificate yet it prints the request and exits 10: have it
-#    signed (`quality-sdk sign-enrolment`), then run it again with
+#    signed (`qsdk sign-enrolment`), then run it again with
 #    --certificate.
 # 5. agent.toml (no secret).
 # 6. The core's files beside its versions, in /opt/quality-data/quality-data
@@ -140,7 +140,7 @@ ROOT="${A[root]:-}"
 if [[ -z "$ROOT" && $EUID -ne 0 ]]; then die "run it as root"; fi
 ETC="$ROOT/etc/quality-data" OPT="$ROOT/opt/quality-data" VAR="$ROOT/var/lib/quality-data"
 BIN="$ROOT/usr/local/bin" MOD="$OPT/quality-data"
-AGENT=("$BIN/quality-data-agent") SDK=("$BIN/quality-sdk")
+AGENT=("$BIN/quality-data-agent") SDK=("$BIN/qsdk")
 if [[ -n "$ROOT" ]]; then AGENT+=(--root "$ROOT"); SDK_ROOT=(--root "$ROOT"); else SDK_ROOT=(); fi
 
 # An installation made before the core's new names (quality_data,
@@ -213,7 +213,7 @@ put_bin() { # put_bin SOURCE NAME
   [[ -x "$BIN/$2" ]] || die "$2 is not installed: give --${3:-$2}"
 }
 put_bin "${A[agent]:-}" quality-data-agent agent
-put_bin "${A[sdk]:-}" quality-sdk sdk
+put_bin "${A[sdk]:-}" qsdk sdk
 helper="${A[signing-helper]:-}"
 if [[ -z "$helper" && ! -x "$BIN/aws_signing_helper" ]]; then
   helper="$(mktemp)"
@@ -240,7 +240,7 @@ if [[ -n "${A[certificate]:-}" ]]; then
   install -m 0644 "${A[certificate]}" "$ETC/enrolment/certificate.pem"
 fi
 if [[ ! -s "$ETC/enrolment/certificate.pem" ]]; then
-  echo "The enrolment request, to sign with \`quality-sdk sign-enrolment\`:"
+  echo "The enrolment request, to sign with \`qsdk sign-enrolment\`:"
   cat "$ETC/enrolment/request.csr"
   echo "Then run this again with --certificate <the signed certificate>."
   exit 10

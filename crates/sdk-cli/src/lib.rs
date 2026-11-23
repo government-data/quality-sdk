@@ -1,4 +1,4 @@
-//! The `quality-sdk` CLI (decision 0001): enrol an installation
+//! The `qsdk` CLI (decision 0001): enrol an installation
 //! ([`enrol`]), sign its enrolment with the installations' CA ([`sign`]),
 //! revoke it ([`revoke`]), and publish a platform version to the signed index
 //! ([`publish`]).

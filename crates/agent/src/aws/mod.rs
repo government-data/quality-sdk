@@ -5,7 +5,7 @@
 //! Each piece is behind a port ([`credentials::CredentialSource`],
 //! [`http::Transport`]) so it is tested with fakes: no test calls a real
 //! account. The signed calls themselves are the `aws-client` crate's,
-//! shared with the `quality-sdk` CLI.
+//! shared with the `qsdk` CLI.
 
 pub use aws_client::{client, ecr, http, sigv4};
 

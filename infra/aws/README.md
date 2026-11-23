@@ -55,7 +55,7 @@ removes everything it created.
 ## Revoke an installation
 
 ```bash
-quality-sdk revoke --ca-cert ~/qd-ca/ca.pem --ca-key ~/qd-ca/ca.key \
+qsdk revoke --ca-cert ~/qd-ca/ca.pem --ca-key ~/qd-ca/ca.key \
   --trust-anchor-arn "$(terraform -chdir=infra/aws output -raw trust_anchor_arn)" \
   --certificate installation.pem
 ```

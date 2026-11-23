@@ -1,4 +1,4 @@
-//! `quality-sdk sign-enrolment`, by the CA's holder, offline (decision
+//! `qsdk sign-enrolment`, by the CA's holder, offline (decision
 //! 0001): an installation's certificate request signed with the
 //! installations' CA. The request must prove its key (its signature
 //! verifies) and name one OU, `installation`, and one CN, a valid

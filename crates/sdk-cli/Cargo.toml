@@ -12,10 +12,10 @@ publish = false
 workspace = true
 
 [[bin]]
-name = "quality-sdk"
+name = "qsdk"
 path = "src/main.rs"
 
-# The `quality-sdk` CLI (decision 0001): enrol an installation, sign its
+# The `qsdk` CLI (decision 0001): enrol an installation, sign its
 # enrolment with the installations' CA, revoke it, and publish a platform
 # version to the signed index.
 [dependencies]

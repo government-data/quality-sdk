@@ -17,7 +17,7 @@ installation opens no inbound port for this.
 > (`crates/agent`: `install`, `run`, `check`) with its adapters for AWS,
 > quality-data's internal API, Docker Compose, PostgreSQL and the package
 > files, its systemd unit and the server installer (`packaging/install.sh`),
-> and the `quality-sdk` CLI (`crates/sdk-cli`: `enrol`, `sign-enrolment`,
+> and the `qsdk` CLI (`crates/sdk-cli`: `enrol`, `sign-enrolment`,
 > `revoke`, `publish`). Planned: the module lifecycle
 > (`module add|remove|purge`), routes and OIDC clients from manifests, and the
 > modules other than `quality-data`.
@@ -141,7 +141,7 @@ the core is built; the modules and the capabilities between them are planned.
 | `crates/updater`           | The update engine: a state machine that survives a crash, behind its `Host` trait.                                           |
 | `crates/agent`             | The installation's agent (`quality-data-agent`) and its adapters.                                                            |
 | `crates/aws-client`        | The few AWS calls, signed with SigV4 by hand (no AWS SDK), shared by the agent and the CLI.                                  |
-| `crates/sdk-cli`           | The `quality-sdk` CLI: `enrol`, `sign-enrolment`, `revoke` and `publish`.                                                    |
+| `crates/sdk-cli`           | The `qsdk` CLI: `enrol`, `sign-enrolment`, `revoke` and `publish`.                                                           |
 | `packaging/`               | `install.sh` and the agent's systemd unit.                                                                                   |
 | `tools/`                   | `verify/` scripts and `mirror-image.sh`.                                                                                     |
 | `.github/workflows/`       | CI checks for Terraform, Rust and shell, and the release binaries.                                                           |
