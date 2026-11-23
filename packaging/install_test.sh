@@ -5,7 +5,8 @@
 # --install-docker (fakes of apt-get, curl, gpg and dpkg), a whole install (the agent's three runs and
 # the core's commands between them, in core decision 0082's order), the
 # files and their modes and owners, a second run doing nothing, runs
-# cut between the agent's runs then resumed, and an .env from before the
+# cut between the agent's runs then resumed, qd linked to the agent (another
+# qd refused), and an .env from before the
 # core's new names or QD_TLS_MODE refused.
 #
 #   packaging/install_test.sh
@@ -157,6 +158,16 @@ QD_TEST_ENGINE=29.3.0 run "${ARGS[@]}"
 check "a Docker Engine older than the floor is refused" bash -c "test $rc = 2 && grep -q 'too old' '$WORK/out'"
 QD_TEST_COMPOSE=v5.0.2 run "${ARGS[@]}"
 check "a Compose plugin older than the floor is refused" bash -c "test $rc = 2 && grep -q 'too old' '$WORK/out'"
+new_root other-qd
+mkdir -p "$ROOT/usr/local/bin" && echo mine >"$ROOT/usr/local/bin/qd"
+run "${ARGS[@]}"
+check "a qd that is not the agent's link is refused (2), kept, nothing laid out" bash -c \
+  "test $rc = 2 && grep -q 'not the link to quality-data-agent' '$WORK/out' && grep -qx mine '$ROOT/usr/local/bin/qd' && ! test -e '$ROOT/etc/quality-data'"
+rm "$ROOT/usr/local/bin/qd" && ln -s /usr/bin/true "$ROOT/usr/local/bin/qd"
+run "${ARGS[@]}"
+check "a qd linked elsewhere is refused (2) and kept" bash -c \
+  "test $rc = 2 && test \"\$(readlink '$ROOT/usr/local/bin/qd')\" = /usr/bin/true"
+new_root root
 
 # --- Docker installed with --install-docker -------------------------------------------
 
@@ -226,6 +237,8 @@ check "internal.yml and machines-ca.crt are in Traefik's watched folder" \
 check "a self-signed default certificate for Traefik" test -s "$MOD/certs/local.crt"
 check "the unit is installed, not enabled under --root" bash -c \
   "test -f '$ROOT/etc/systemd/system/quality-data-agent.service' && grep -q 'not run' '$WORK/out'"
+check "qd is a link to quality-data-agent beside it" \
+  test "$(readlink "$ROOT/usr/local/bin/qd")" = quality-data-agent
 
 # --- run again: nothing more ---------------------------------------------------------
 
@@ -236,6 +249,8 @@ check "run again it finishes (0)" test "$rc" = 0
 check "run again it neither installs nor runs a command" \
   bash -c "! grep -Eq '^agent|^sdk|ca-init|up --detach|run --rm' '$WORK/log'"
 check "run again the .env and its passwords are kept" cmp -s "$WORK/env.before" "$MOD/.env"
+check "run again qd is still the link to quality-data-agent" \
+  test "$(readlink "$ROOT/usr/local/bin/qd")" = quality-data-agent
 check "without --admin-email it says how to get the administrator's link" grep -q -- '--admin-email' "$WORK/out"
 
 # --- the first administrator -----------------------------------------------------------

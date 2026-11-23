@@ -1,4 +1,5 @@
-//! `quality-data-agent`: the installation's update agent.
+//! `quality-data-agent`: the installation's update agent. `install.sh`
+//! links it as `qd`, the short name a person types on the server.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -8,7 +9,9 @@ use agent::config::Config;
 use agent::paths::Paths;
 
 const USAGE: &str = "\
-usage: quality-data-agent [--root DIR] <command>
+usage: qd [--root DIR] <command>
+
+qd is the short name of quality-data-agent, the installation's agent.
 
 commands:
   config    read and check /etc/quality-data/agent.toml
@@ -177,12 +180,16 @@ fn install(paths: &Paths, version: Option<&str>) -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(Done::Prepared { version }) => {
-            println!("{version} prepared, nothing started: run the first-start commands, then run install again");
+            println!(
+                "{version} prepared, nothing started: run the first-start commands, \
+                 then run `qd install` again"
+            );
             ExitCode::from(4)
         }
         Ok(Done::NeedsCertificate { version }) => {
             println!(
-                "{version} started; the internal certificate is missing ({}): issue it,                  then run install again",
+                "{version} started; the internal certificate is missing ({}): issue it, \
+                 then run `qd install` again",
                 paths.internal_certificate().display()
             );
             ExitCode::from(3)
@@ -300,7 +307,9 @@ fn renew(paths: &Paths, force: bool) -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok((Renewal::NotDue { not_after }, serial)) => {
-            println!("not due: certificate {serial} until {not_after} (--force renews now)");
+            println!(
+                "not due: certificate {serial} until {not_after} (`qd renew --force` renews now)"
+            );
             ExitCode::SUCCESS
         }
         Err(err) => {
