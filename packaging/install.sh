@@ -19,7 +19,9 @@
 #    versions pinned in docker-apt.sh; a Docker already there is never
 #    changed (decision 0007 point 1).
 # 2. /etc/quality-data, /opt/quality-data, /var/lib/quality-data.
-# 3. The binaries in /usr/local/bin; aws_signing_helper checked by SHA-256.
+# 3. The binaries in /usr/local/bin; aws_signing_helper checked by SHA-256;
+#    qd, the short name a person types, a link to quality-data-agent. Any
+#    other qd already there is refused (exit 2) before anything changes.
 # 4. The enrolment: `qsdk enrol` makes the key and the request; with
 #    no signed certificate yet it prints the request and exits 10: have it
 #    signed (`qsdk sign-enrolment`), then run it again with
@@ -143,6 +145,12 @@ BIN="$ROOT/usr/local/bin" MOD="$OPT/quality-data"
 AGENT=("$BIN/quality-data-agent") SDK=("$BIN/qsdk")
 if [[ -n "$ROOT" ]]; then AGENT+=(--root "$ROOT"); SDK_ROOT=(--root "$ROOT"); else SDK_ROOT=(); fi
 
+# qd is the agent's short name, a link install.sh makes: another qd at that
+# path (a file, or a link elsewhere) is not replaced.
+if [[ -e "$BIN/qd" || -L "$BIN/qd" ]] && [[ "$(readlink "$BIN/qd")" != quality-data-agent ]]; then
+  die "$BIN/qd exists and is not the link to quality-data-agent: move it away, then run this again"
+fi
+
 # An installation made before the core's new names (quality_data,
 # quality_data_app) or before QD_TLS_MODE is not installed over: it is
 # moved by reinstall and restore (core decision 0088). Refused before
@@ -214,6 +222,7 @@ put_bin() { # put_bin SOURCE NAME
 }
 put_bin "${A[agent]:-}" quality-data-agent agent
 put_bin "${A[sdk]:-}" qsdk sdk
+[[ -L "$BIN/qd" ]] || ln -s quality-data-agent "$BIN/qd"
 helper="${A[signing-helper]:-}"
 if [[ -z "$helper" && ! -x "$BIN/aws_signing_helper" ]]; then
   helper="$(mktemp)"
@@ -414,7 +423,7 @@ catch_up() {
 }
 
 if [[ -f "$VAR/updater/installed.json" && ! -f "$VAR/updater/install.json" ]]; then
-  say "already installed: the agent updates it"
+  say "already installed: the agent updates it (qd update asks for one now)"
   if [[ -n "$TLS_CHANGED" ]]; then
     say "recreating Traefik for the web's new certificate"
     pkg up --detach --no-build --force-recreate traefik || fail "could not recreate Traefik"

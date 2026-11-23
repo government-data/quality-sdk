@@ -124,7 +124,7 @@ pub fn install(i: &dyn Installer, files: &Files, version: Option<&str>) -> Resul
         None if files.installed.exists() => {
             return Err(format!(
                 "{} exists: this installation was installed before; it is updated by \
-                 `quality-data-agent run`, not installed again",
+                 the agent's service (`qd update` asks for one now), not installed again",
                 files.installed.display()
             ));
         }
