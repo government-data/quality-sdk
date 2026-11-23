@@ -4,8 +4,9 @@
 # Its arguments and refusals, Docker checked and installed with
 # --install-docker (fakes of apt-get, curl, gpg and dpkg), a whole install (the agent's three runs and
 # the core's commands between them, in core decision 0082's order), the
-# files and their modes and owners, a second run doing nothing, and runs
-# cut between the agent's runs then resumed.
+# files and their modes and owners, a second run doing nothing, runs
+# cut between the agent's runs then resumed, and an .env from before the
+# core's new names or QD_TLS_MODE refused.
 #
 #   packaging/install_test.sh
 set -euo pipefail
@@ -312,11 +313,20 @@ check "a failing app-machine stops the install (1)" \
 # As on the first test installation: the agent's start was tried, so its
 # install.json is past the stop after prepare; and an .env of the
 # installer before core decision 0087 (Let's Encrypt's contact, no
-# certificate source).
+# certificate source), refused by core decision 0088.
 "$FAKES/quality-data-agent" install 2>/dev/null || true
 check "the agent's start failed without PostgreSQL's certificate (step start)" \
   grep -q '"step": "start"' "$ROOT/var/lib/quality-data/updater/install.json"
 sed -i -e 's/^ACME_EMAIL=.*/ACME_EMAIL=admin@example.com/' -e '/^QD_TLS_MODE=/d' "$MOD/.env"
+cp "$MOD/.env" "$WORK/env.old"
+: >"$WORK/log"
+run "${ARGS[@]}"
+check "an .env without QD_TLS_MODE is refused (2), saying reinstall and restore" \
+  bash -c "test $rc = 2 && grep -q 'reinstall and restore' '$WORK/out'"
+check "refused: the .env byte for byte as it was, and nothing run" \
+  bash -c "cmp -s '$WORK/env.old' '$MOD/.env' && ! test -s '$WORK/log'"
+# The person states the source; the run resumes and the .env follows it.
+echo "QD_TLS_MODE=acme" >>"$MOD/.env"
 grep -Ev '^(QD_TLS_MODE|ACME_EMAIL)=' "$MOD/.env" >"$WORK/env.before"
 : >"$WORK/log"
 run "${ARGS[@]}"
@@ -326,5 +336,19 @@ check "run again: up -d postgres and app-machine before the agent's start" \
 check "run again the .env's certificate source is file, its ACME contact gone, the rest kept" bash -c \
   "grep -qx 'QD_TLS_MODE=file' '$MOD/.env' && grep -qx 'ACME_EMAIL=' '$MOD/.env' &&
    grep -Ev '^(QD_TLS_MODE|ACME_EMAIL)=' '$MOD/.env' | cmp -s '$WORK/env.before' -"
+
+# --- an .env with the legacy database names (core decision 0088) -----------------------
+
+for legacy in 's/^POSTGRES_DB=.*/POSTGRES_DB=knime/' 's/^APP_DB_USER=.*/APP_DB_USER=knime_app/'; do
+  new_root "legacy-${legacy:3:6}"
+  run "${ARGS[@]}" --certificate "$WORK/certificate.pem"
+  sed -i "$legacy" "$MOD/.env"
+  cp "$MOD/.env" "$WORK/env.old"
+  : >"$WORK/log"
+  run "${ARGS[@]}" --certificate "$WORK/certificate.pem"
+  check "an .env with a legacy name ($legacy) is refused (2), nothing changed or run" bash -c \
+    "test $rc = 2 && grep -q 'quality_data_app' '$WORK/out' && cmp -s '$WORK/env.old' '$MOD/.env' &&
+     ! test -s '$WORK/log'"
+done
 
 exit "$FAILED"

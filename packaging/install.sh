@@ -58,7 +58,10 @@
 #    (core decision 0079); the core checks the name. Without it the platform
 #    stays on UTC, or on what was set before (decision 0007 point 5).
 #
-# It names only quality-data, the hub every installation has.
+# It names only quality-data, the hub every installation has. A
+# quality-data .env from before the core's new database names or without
+# QD_TLS_MODE is refused (exit 2) before anything changes: that
+# installation is moved by reinstall and restore (core decision 0088).
 #
 # --root DIR lays everything out under DIR, never calls systemctl and, when
 # not run as root, says which owner each file would get (tests).
@@ -139,6 +142,19 @@ ETC="$ROOT/etc/quality-data" OPT="$ROOT/opt/quality-data" VAR="$ROOT/var/lib/qua
 BIN="$ROOT/usr/local/bin" MOD="$OPT/quality-data"
 AGENT=("$BIN/quality-data-agent") SDK=("$BIN/quality-sdk")
 if [[ -n "$ROOT" ]]; then AGENT+=(--root "$ROOT"); SDK_ROOT=(--root "$ROOT"); else SDK_ROOT=(); fi
+
+# An installation made before the core's new names (quality_data,
+# quality_data_app) or before QD_TLS_MODE is not installed over: it is
+# moved by reinstall and restore (core decision 0088). Refused before
+# anything changes.
+if [[ -f "$MOD/.env" ]]; then
+  old_env() { sed -n "s/^$1=//p" "$MOD/.env" | tail -1; }
+  if [[ "$(old_env POSTGRES_DB)" != quality_data || "$(old_env APP_DB_USER)" != quality_data_app ]] ||
+    ! grep -q '^QD_TLS_MODE=' "$MOD/.env"; then
+    die "$MOD/.env predates the database names quality_data and quality_data_app or QD_TLS_MODE: \
+this installation is not installed over or updated in place; move it by reinstall and restore"
+  fi
+fi
 
 own() { # own UID PATH...
   local uid=$1; shift
