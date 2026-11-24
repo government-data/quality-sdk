@@ -22,6 +22,7 @@ pub struct Adapters {
     cloud: AwsCloud,
     packages: PackageFiles,
     compose: DockerCompose,
+    provisioner: super::provisioner::Provisioner,
 }
 
 impl std::fmt::Debug for Adapters {
@@ -36,7 +37,12 @@ impl Adapters {
     /// From the settings and the installation's files.
     pub fn new(paths: &Paths) -> Result<Self, String> {
         let config = Config::load(&paths.config_file())?;
+        let api = match &config.api {
+            Some(settings) => Some(crate::api::UpdaterApi::from_settings(settings, paths)?),
+            None => None,
+        };
         Ok(Self {
+            provisioner: super::provisioner::Provisioner::new(paths, api, &config.helper_image()),
             paths: paths.clone(),
             cloud: AwsCloud::from_config(&config, paths)?,
             packages: PackageFiles::new(paths),
@@ -133,6 +139,9 @@ impl ModuleHost for Adapters {
     }
     fn tell_core(&self) -> Result<(), String> {
         crate::service::assemble(&self.paths)?.put_modules()
+    }
+    fn provision(&self) -> &dyn super::Provision {
+        &self.provisioner
     }
 }
 

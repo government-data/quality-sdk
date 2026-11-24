@@ -17,7 +17,8 @@ use std::process::ExitCode;
 
 use agent::compose::DockerCompose;
 use agent::host::{Compose, Features, InstalledModule, Packages};
-use agent::modules::{adapters, add, remove, ModuleHost};
+use agent::modules::provisioner::Provisioner;
+use agent::modules::{adapters, add, remove, ModuleHost, Provision};
 use agent::package_files::PackageFiles;
 use agent::paths::Paths;
 use module_manifest::Manifest;
@@ -28,6 +29,7 @@ struct Offline {
     paths: Paths,
     compose: DockerCompose,
     packages: PackageFiles,
+    provisioner: Provisioner,
     /// The module's package and its one image, for `add`.
     package: PathBuf,
     image: (String, String),
@@ -116,6 +118,11 @@ impl ModuleHost for Offline {
         println!("{body}");
         Ok(())
     }
+    /// No quality-data: a module that needs its clients is refused, and
+    /// audit events wait in the outbox.
+    fn provision(&self) -> &dyn Provision {
+        &self.provisioner
+    }
 }
 
 fn main() -> ExitCode {
@@ -126,6 +133,7 @@ fn main() -> ExitCode {
     };
     let paths = Paths::under(&root);
     let mut host = Offline {
+        provisioner: Provisioner::new(&paths, None, "unused"),
         compose: DockerCompose::new(&paths),
         packages: PackageFiles::new(&paths),
         paths,
