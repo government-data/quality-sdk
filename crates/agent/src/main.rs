@@ -234,10 +234,12 @@ fn run(paths: &Paths, every: Duration, once: bool) -> ExitCode {
     let rounds = once.then_some(1);
     // Before each round: renew the internal certificate when due, and tell
     // quality-data the installed modules until it has heard them (at start,
-    // and again after a failure).
+    // and again after a failure), and send the audit events it has not
+    // taken yet.
     let mut before = || {
         agent::service::renew(&renewer, chrono::Utc::now());
         host.tell_modules_if_untold();
+        agent::service::flush_audit(paths);
     };
     agent::service::run_with(&host, &paths.state_file(), every, rounds, &mut before);
     ExitCode::SUCCESS

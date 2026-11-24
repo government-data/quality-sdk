@@ -13,6 +13,7 @@
 //! | `GET /updater/v1/version` | the version part of `healthy`; its `features` (decision 0009) |
 //! | `PUT /updater/v1/modules` | which modules are installed (after a start, and when the agent starts) |
 //! | `POST /updater/v1/request` | "Update now" for a person on the server (`update`, decision 0007) |
+//! | a module's clients, purge and audit | [`modules`] (decision 0009) |
 
 use std::time::Duration;
 
@@ -25,6 +26,7 @@ use updater::state::State;
 use crate::host::{Api, Features, InstalledModule};
 
 pub mod internal_files;
+pub mod modules;
 pub mod renew;
 pub mod tls;
 

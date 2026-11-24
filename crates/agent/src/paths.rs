@@ -134,6 +134,18 @@ impl Paths {
         self.data.join("updater/releases")
     }
 
+    /// The agent's audit events the core has not taken yet (decision 0009).
+    pub fn audit_outbox(&self) -> PathBuf {
+        self.data.join("updater/audit-outbox.jsonl")
+    }
+
+    /// A module's `add`, `remove` or `purge` while it runs (decision 0009).
+    pub fn module_progress(&self, module: &str) -> PathBuf {
+        self.data
+            .join("updater/modules")
+            .join(format!("{module}.json"))
+    }
+
     /// The backups taken before applying.
     pub fn backups_dir(&self) -> PathBuf {
         self.data.join("backups")

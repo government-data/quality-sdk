@@ -14,10 +14,10 @@ use updater::state::State;
 use super::*;
 
 /// What the fake server was sent: method, path and body.
-type Sent = Arc<Mutex<Vec<(String, String, String)>>>;
+pub(super) type Sent = Arc<Mutex<Vec<(String, String, String)>>>;
 
 /// A server that answers `answers` (by method and path) and 404 otherwise.
-fn server(answers: &[(&str, u16, &str)]) -> (String, Sent) {
+pub(super) fn server(answers: &[(&str, u16, &str)]) -> (String, Sent) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let answers: Vec<(String, u16, String)> = answers
@@ -70,7 +70,7 @@ fn server(answers: &[(&str, u16, &str)]) -> (String, Sent) {
     (base, sent)
 }
 
-fn api(base: &str) -> UpdaterApi {
+pub(super) fn api(base: &str) -> UpdaterApi {
     UpdaterApi::new(base, Box::new(Https::default()))
 }
 
@@ -267,7 +267,7 @@ fn an_api_that_does_not_answer_fails_every_call_but_orders() {
 }
 
 /// An address where nothing listens.
-fn closed() -> String {
+pub(super) fn closed() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     drop(listener);
