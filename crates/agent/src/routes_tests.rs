@@ -40,7 +40,8 @@ fn a_forward_route_names_the_core_s_chain_and_gate() {
 #[test]
 fn a_route_without_forward_has_no_gate_of_the_core() {
     for rest in [
-        "route: { path: /lake, service: console, port: 9001 }\nauth: oidc\n",
+        "route: { path: /lake, service: console, port: 9001 }\nauth: oidc\n\
+         oidc: { people: { redirect_paths: [/lake/cb] } }\n",
         "route: { path: /lake, service: console, port: 9001 }\n",
     ] {
         let m = manifest("lake-rustfs", rest).unwrap();

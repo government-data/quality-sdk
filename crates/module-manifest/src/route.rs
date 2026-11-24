@@ -160,7 +160,7 @@ fn validate_menu(menu: &Menu, route: &Route) -> Result<(), ManifestError> {
 
 /// The route itself or a path under it, with no query, fragment, `..`, `.`
 /// or empty segment (only the last may be empty: a trailing `/`).
-fn under(path: &str, route: &str) -> bool {
+pub(crate) fn under(path: &str, route: &str) -> bool {
     let rest = match path.strip_prefix(route) {
         Some("") => return true,
         Some(rest) => rest,

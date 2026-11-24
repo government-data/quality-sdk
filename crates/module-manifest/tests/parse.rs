@@ -102,6 +102,7 @@ version: 1.0.0
 images: { rustfs: r/lake@sha256:00 }
 route: { path: /lake, service: console, port: 9001 }
 auth: oidc
+oidc: { people: { redirect_paths: [/lake/callback] } }
 menu: { label: { en: Lake, es: Lago } }
 consumes: { apis: [core] }
 permissions: { actions: [] }

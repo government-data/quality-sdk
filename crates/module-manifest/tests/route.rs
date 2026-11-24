@@ -39,7 +39,11 @@ fn without_them_the_module_is_not_served_to_people() {
     let m = manifest("").unwrap();
     assert_eq!((m.route, m.auth, m.menu), (None, None, None));
     assert_eq!(
-        manifest(&format!("{ROUTE}auth: oidc\n")).unwrap().auth,
+        manifest(&format!(
+            "{ROUTE}auth: oidc\noidc: {{ people: {{ redirect_paths: [/docs/cb] }} }}\n"
+        ))
+        .unwrap()
+        .auth,
         Some(Auth::Oidc)
     );
 }
