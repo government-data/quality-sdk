@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use agent::compose::DockerCompose;
-use agent::host::{Compose, InstalledModule, Packages};
+use agent::host::{Compose, Features, InstalledModule, Packages};
 use agent::modules::{adapters, add, remove, ModuleHost};
 use agent::package_files::PackageFiles;
 use agent::paths::Paths;
@@ -105,7 +105,12 @@ impl ModuleHost for Offline {
         let mut modules = Vec::new();
         for (name, m) in &installed.modules {
             let manifest = self.manifest(name)?;
-            modules.push(InstalledModule::new(name, &m.version, manifest.as_ref()));
+            modules.push(InstalledModule::new(
+                name,
+                &m.version,
+                manifest.as_ref(),
+                &Features::default(),
+            ));
         }
         let body = serde_json::json!({ "modules": modules });
         println!("{body}");

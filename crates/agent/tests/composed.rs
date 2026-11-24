@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use agent::host::{
-    Adapters, AgentHost, Api, Clock, Cloud, Compose, Database, InstalledModule, Packages,
+    Adapters, AgentHost, Api, Clock, Cloud, Compose, Database, Features, InstalledModule, Packages,
 };
 use agent::paths::Paths;
 use chrono::{DateTime, TimeZone, Utc};
@@ -195,6 +195,9 @@ impl Api for FakeApi {
             .collect();
         self.0.note(format!("api:modules:{}", names.join(",")));
         Ok(())
+    }
+    fn features(&self) -> Result<Features, String> {
+        Ok(Features::default())
     }
     fn version(&self) -> Result<String, String> {
         let answers = self.0.answers.borrow().clone();
