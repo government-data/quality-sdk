@@ -84,6 +84,11 @@ fn a_crash_at_each_step_resumes_with_the_same_new_values() {
             err.contains("qd module rotate bi resumes it"),
             "{step}: {err}"
         );
+        let report = f.calls().last().unwrap().clone();
+        assert!(
+            report.starts_with("report rotate_failed 1.4.0 bi 1.0.0 crash before"),
+            "{step}: {report}"
+        );
         let staged = f.provision.secret_of("bi", "oidc-people-secret.next");
         rotate(&f, "bi").unwrap();
         if let Some(staged) = staged {
