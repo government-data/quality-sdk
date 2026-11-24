@@ -12,8 +12,13 @@ data "aws_iam_openid_connect_provider" "github" {
 locals {
   github_owner = split("/", var.github_repo)[0]
   github_name  = split("/", var.github_repo)[1]
-  github_subject = var.github_ids == null ? "repo:${var.github_repo}:ref:refs/tags/v*" : (
-    "repo:${local.github_owner}@${var.github_ids.owner}/${local.github_name}@${var.github_ids.repo}:ref:refs/tags/v*"
+  # As module_publishers.tf: with ids, every organisation name and ids only.
+  github_subjects = var.github_ids == null ? ["repo:${var.github_repo}:ref:refs/tags/v*"] : concat(
+    [
+      for owner in distinct(concat([local.github_owner], var.github_owner_names)) :
+      "repo:${owner}@${var.github_ids.owner}/${local.github_name}@${var.github_ids.repo}:ref:refs/tags/v*"
+    ],
+    ["repository_owner_id:${var.github_ids.owner}:repository_id:${var.github_ids.repo}:ref:refs/tags/v*"],
   )
 }
 
@@ -32,7 +37,7 @@ data "aws_iam_policy_document" "publish_trust" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = [local.github_subject]
+      values   = local.github_subjects
     }
   }
 }

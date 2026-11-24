@@ -5,10 +5,18 @@
 # writes no package, index or signature, so a compromised module repository
 # cannot reach an installation. The provider is the one publisher.tf reads.
 
+# With `ids`, a role trusts GitHub's immutable subject under every name the
+# organisation has (the one in `repo` and var.github_owner_names) and the
+# ids-only subject, so renaming the organisation needs no new trust
+# (decision 0002). Every value is exact but for the tag after `v`.
 locals {
   module_publisher_subjects = {
-    for module, p in var.module_publishers : module => p.ids == null ? "repo:${p.repo}:ref:refs/tags/v*" : (
-      "repo:${split("/", p.repo)[0]}@${p.ids.owner}/${split("/", p.repo)[1]}@${p.ids.repo}:ref:refs/tags/v*"
+    for module, p in var.module_publishers : module => p.ids == null ? ["repo:${p.repo}:ref:refs/tags/v*"] : concat(
+      [
+        for owner in distinct(concat([split("/", p.repo)[0]], var.github_owner_names)) :
+        "repo:${owner}@${p.ids.owner}/${split("/", p.repo)[1]}@${p.ids.repo}:ref:refs/tags/v*"
+      ],
+      ["repository_owner_id:${p.ids.owner}:repository_id:${p.ids.repo}:ref:refs/tags/v*"],
     )
   }
 }
@@ -29,7 +37,7 @@ data "aws_iam_policy_document" "module_publish_trust" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = [local.module_publisher_subjects[each.key]]
+      values   = local.module_publisher_subjects[each.key]
     }
   }
 }

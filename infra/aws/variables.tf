@@ -77,12 +77,27 @@ variable "github_repo" {
 }
 
 variable "github_ids" {
-  description = "Owner and repository ids, for GitHub's immutable OIDC subject. null: the subject by name only."
+  description = "Owner and repository ids, for GitHub's immutable OIDC subject (under every name in github_owner_names too) and the ids-only subject. null: the subject by name only."
   type = object({
     owner = number
     repo  = number
   })
   default = null
+}
+
+variable "github_owner_names" {
+  description = <<-EOT
+    The names the GitHub organisation is trusted under, besides the one in
+    each `repo`, while it is renamed (decision 0002): a role with ids trusts
+    the immutable subject `repo:<name>@<owner id>/<repo>@<repo id>` for each
+    name. The ids, not the names, say which organisation it is.
+  EOT
+  type        = list(string)
+  default     = ["quality-data", "government-data"]
+  validation {
+    condition     = alltrue([for n in var.github_owner_names : can(regex("^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$", n))])
+    error_message = "Each github_owner_names entry must be a GitHub organisation name: letters, digits and inner hyphens."
+  }
 }
 
 variable "report_retention_days" {
@@ -98,7 +113,8 @@ variable "module_publishers" {
     only to the module's repositories named in `images` (the images it
     builds; mirrored third-party images are not the module role's) and has
     no S3 or KMS right. `ids` are the owner and repository ids for GitHub's
-    immutable OIDC subject; null: the subject by name only.
+    immutable OIDC subject (under every name in github_owner_names too)
+    and the ids-only subject; null: the subject by name only.
   EOT
   type = map(object({
     repo   = string
