@@ -31,7 +31,7 @@ no secret, but keep a copy.
 Each entry of `module_publishers` (by default `quality-data` →
 `quality-data/core`, images `api` and `web`; `docs` → `quality-data/docs`,
 image `web`; `lake-rustfs` → `quality-data/lake-rustfs`, image `admin`, not
-the mirrored `rustfs`) gets a role
+the mirrored `rustfs` and `gate`) gets a role
 `quality-data-publish-<module>` that GitHub Actions assumes on a `v*` tag of
 that repository; it may push only to those ECR repositories. After applying, a
 person sets two repository variables (Settings → Secrets and variables →
