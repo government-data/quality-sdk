@@ -6,20 +6,24 @@ use std::collections::BTreeMap;
 
 use updater::state::Module;
 
+use super::fake_provision::FakeProvision;
 use super::*;
 
 /// The installation: its modules and their manifests, and what the index's
 /// platform version carries beyond them.
-struct Fake {
+pub(super) struct Fake {
     installed: RefCell<BTreeMap<String, Option<Manifest>>>,
+    /// Packages put and not recorded as installed yet.
+    packages: RefCell<BTreeMap<String, Option<Manifest>>>,
     order: RefCell<Vec<String>>,
     /// The index's modules not installed, with their package's manifest.
     index: BTreeMap<String, Option<Manifest>>,
     calls: RefCell<Vec<String>>,
     update_running: bool,
+    pub(super) provision: FakeProvision,
 }
 
-fn manifest(name: &str, rest: &str) -> Option<Manifest> {
+pub(super) fn manifest(name: &str, rest: &str) -> Option<Manifest> {
     Some(Manifest::parse(&format!("name: {name}\nversion: 1.0.0\n{rest}")).unwrap())
 }
 
@@ -31,7 +35,7 @@ const REQUIRES_LAKE: &str =
     "requires: { capabilities: [{ name: lake, version: 1, protocols: [s3] }] }\n";
 
 impl Fake {
-    fn new(installed: &[(&str, &str)]) -> Self {
+    pub(super) fn new(installed: &[(&str, &str)]) -> Self {
         Self {
             installed: RefCell::new(
                 installed
@@ -39,20 +43,22 @@ impl Fake {
                     .map(|(n, rest)| ((*n).to_string(), manifest(n, rest)))
                     .collect(),
             ),
+            packages: RefCell::default(),
             order: RefCell::new(installed.iter().map(|(n, _)| (*n).to_string()).collect()),
             index: BTreeMap::from([("docs".to_string(), manifest("docs", DOCS))]),
             calls: RefCell::default(),
             update_running: false,
+            provision: FakeProvision::default(),
         }
     }
-    fn with_index(mut self, name: &str, rest: &str) -> Self {
+    pub(super) fn with_index(mut self, name: &str, rest: &str) -> Self {
         self.index.insert(name.into(), manifest(name, rest));
         self
     }
     fn note(&self, s: String) {
         self.calls.borrow_mut().push(s);
     }
-    fn calls(&self) -> Vec<String> {
+    pub(super) fn calls(&self) -> Vec<String> {
         self.calls.borrow().clone()
     }
 }
@@ -87,7 +93,8 @@ impl ModuleHost for Fake {
         ))
     }
     fn manifest(&self, module: &str) -> Result<Option<Manifest>, String> {
-        Ok(self.installed.borrow().get(module).cloned().flatten())
+        let installed = self.installed.borrow().get(module).cloned().flatten();
+        Ok(installed.or_else(|| self.packages.borrow().get(module).cloned().flatten()))
     }
     fn offer(&self, version: &str) -> Result<Offer, String> {
         self.note(format!("offer {version}"));
@@ -132,7 +139,7 @@ impl ModuleHost for Fake {
     fn put_package(&self, module: &str, _p: &Path) -> Result<(), String> {
         self.note(format!("put_package {module}"));
         let m = self.index.get(module).cloned().flatten();
-        self.installed.borrow_mut().insert(module.into(), m);
+        self.packages.borrow_mut().insert(module.into(), m);
         Ok(())
     }
     fn put_modules(
@@ -147,9 +154,14 @@ impl ModuleHost for Fake {
             names.join(","),
             order.join(",")
         ));
-        self.installed
-            .borrow_mut()
-            .retain(|n, _| modules.contains_key(n));
+        let mut installed = self.installed.borrow_mut();
+        installed.retain(|n, _| modules.contains_key(n));
+        for n in modules.keys() {
+            if !installed.contains_key(n) {
+                let m = self.packages.borrow().get(n).cloned().flatten();
+                installed.insert(n.clone(), m);
+            }
+        }
         *self.order.borrow_mut() = order.to_vec();
         Ok(())
     }
@@ -172,6 +184,9 @@ impl ModuleHost for Fake {
     fn tell_core(&self) -> Result<(), String> {
         self.note("tell".into());
         Ok(())
+    }
+    fn provision(&self) -> &dyn Provision {
+        &self.provision
     }
 }
 
@@ -265,21 +280,6 @@ fn what_cannot_be_added_or_removed_is_refused_before_anything_changes() {
         .contains("has no module grafana"));
     assert!(remove(&f, "grafana").unwrap_err().contains("not installed"));
     assert!(remove(&f, "quality-data").unwrap_err().contains("the core"));
-    let oidc = "route: { path: /lake, service: console, port: 9001 }\nauth: oidc\n\
-                oidc: { people: { redirect_paths: [/lake/cb] } }\n";
-    let f = Fake::new(&[("quality-data", "")]).with_index("lake-rustfs", oidc);
-    assert!(add(&f, "lake-rustfs").unwrap_err().contains("OIDC"));
-    let secrets = "secrets: { generate: [{ name: key }] }\n";
-    let f = Fake::new(&[("quality-data", "")]).with_index("lake-rustfs", secrets);
-    assert!(add(&f, "lake-rustfs")
-        .unwrap_err()
-        .contains("cannot get yet"));
-    let actions = "permissions: { actions: [{ name: 'lake-rustfs:Use', \
-                   description: { en: Use, es: Usar } }] }\n";
-    let f = Fake::new(&[("quality-data", "")]).with_index("lake-rustfs", actions);
-    assert!(add(&f, "lake-rustfs")
-        .unwrap_err()
-        .contains("cannot have yet"));
     let mut f = Fake::new(&[("quality-data", "")]);
     f.update_running = true;
     assert!(add(&f, "docs").unwrap_err().contains("update is under way"));

@@ -12,13 +12,19 @@
 //!   (its volumes kept), takes it out of what is installed, removes its
 //!   route and tells quality-data. Its package, `.env` and data stay.
 //!
+//! What a module gets (decision 0009, [`provision`]): at `add`, its secret
+//! files, its role and databases and its OIDC clients, each step written
+//! to its progress file before it runs, so a later `add` resumes; at
+//! `remove`, its clients disabled and its role without `LOGIN`, every
+//! secret and database kept for an `add` afterwards. Both are audited.
+//!
 //! Both run under the agent's lock (the service stopped) and only while no
 //! update runs; a version prepared before is set back to idle, to be
 //! prepared again with the modules installed now (decision 0003).
 
 use std::path::{Path, PathBuf};
 
-use module_manifest::{lost_on_removal, unmet, Auth, Manifest};
+use module_manifest::{lost_on_removal, unmet, Manifest};
 use updater::engine::{Installed, Offer, OfferedPackage};
 use updater::state::Modules;
 
@@ -56,16 +62,30 @@ pub trait ModuleHost {
     fn routes(&self) -> Result<(), String>;
     /// Tell quality-data the installed modules.
     fn tell_core(&self) -> Result<(), String>;
+    /// What a module gets: secrets, database, clients (decision 0009).
+    fn provision(&self) -> &dyn Provision;
 }
 
 /// What a command did: its warnings, for the person.
 pub type Warnings = Vec<String>;
 
-/// Add `module` at the installed platform version.
+/// Add `module` at the installed platform version; with a progress file
+/// of an `add` that stopped, resume it (every step runs again, changing
+/// nothing that is done).
 pub fn add(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
     host.no_update_running()?;
+    let p = host.provision();
+    let resuming = match p.progress(module)? {
+        Some(pr) if pr.operation == "purging" => {
+            return Err(format!(
+                "a purge of {module} is under way: run qd module purge {module} again"
+            ))
+        }
+        Some(pr) => pr.operation == "adding",
+        None => false,
+    };
     let (installed, order) = host.installed()?;
-    if installed.modules.contains_key(module) {
+    if installed.modules.contains_key(module) && !resuming {
         return Err(format!("{module} is already installed"));
     }
     let offer = only(host.offer(&installed.version)?, module).ok_or_else(|| {
@@ -84,22 +104,8 @@ pub fn add(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
             manifest.name
         ));
     }
-    if manifest.auth == Some(Auth::Oidc) || manifest.oidc.is_some() {
-        return Err(format!(
-            "{module} signs in with OIDC, which modules cannot do yet"
-        ));
-    }
-    if manifest.permissions.is_some() {
-        return Err(format!(
-            "{module} declares permissions, which modules cannot have yet"
-        ));
-    }
-    if !manifest.secrets.generate.is_empty() || manifest.database_role().is_some() {
-        return Err(format!(
-            "{module} asks for secret files or a database, which modules cannot get yet"
-        ));
-    }
-    let manifests = manifests(host, installed.modules.keys())?;
+    let others = installed.modules.keys().filter(|m| *m != module);
+    let manifests = manifests(host, others)?;
     let mut warnings = Vec::new();
     let mut missing = Vec::new();
     for u in unmet(&manifest, &manifests) {
@@ -116,25 +122,70 @@ pub fn add(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
     if !missing.is_empty() {
         return Err(format!("not added: {}", missing.join("; ")));
     }
-    host.pull_images(&offer)?;
-    host.put_package(module, &package)?;
-    let mut modules = installed.modules.clone();
-    modules.extend(offer.modules.clone());
-    let mut order = order;
-    order.push(module.to_string());
-    host.put_modules(&installed.version, &modules, &order)?;
-    host.up(module)?;
-    host.routes()?;
-    host.healthy(module)?;
+    if manifest.oidc.is_some() || manifest.permissions.is_some() {
+        provision::check_features(&manifest, &p.features()?)?;
+    }
+    let audiences = provision::audiences(&manifest, &manifests)?;
+    let version = manifest.version.to_string();
+    let step = std::cell::RefCell::new(String::from("prepared"));
+    let mut save = |s: &str| {
+        *step.borrow_mut() = s.to_string();
+        p.save_progress(
+            module,
+            &Progress {
+                operation: "adding".into(),
+                version: version.clone(),
+                step: s.into(),
+            },
+        )
+    };
+    let added = (|| {
+        host.pull_images(&offer)?;
+        host.put_package(module, &package)?;
+        save("prepared")?;
+        if provision::provides_anything(&manifest) {
+            provision::provision(p, &manifest, &audiences, &mut save)?;
+        }
+        save("started")?;
+        let mut modules = installed.modules.clone();
+        modules.extend(offer.modules.clone());
+        let mut order = order;
+        order.retain(|m| m != module);
+        order.push(module.to_string());
+        host.put_modules(&installed.version, &modules, &order)?;
+        host.up(module)?;
+        host.routes()?;
+        host.healthy(module)
+    })();
+    if let Err(err) = added {
+        let at = step.borrow().clone();
+        p.audit(&provision::event(
+            "ModuleAdded",
+            module,
+            &version,
+            Some((&at, &err)),
+        ));
+        return Err(format!(
+            "{err} ({module} stopped at {at}: qd module add {module} resumes it)"
+        ));
+    }
     tell(host, &mut warnings);
+    p.audit(&provision::event("ModuleAdded", module, &version, None));
+    p.clear_progress(module)?;
     Ok(warnings)
 }
 
-/// Remove `module`, keeping its data.
+/// Remove `module`, keeping its data, its secrets, its role and its
+/// databases; its clients disabled and its role without `LOGIN`. An `add`
+/// that stopped is undone as far as it went.
 pub fn remove(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
     host.no_update_running()?;
+    let p = host.provision();
+    let progress = p.progress(module)?;
     let (installed, order) = host.installed()?;
-    if !installed.modules.contains_key(module) {
+    let is_installed = installed.modules.contains_key(module);
+    let adding = progress.as_ref().is_some_and(|pr| pr.operation == "adding");
+    if !is_installed && !adding {
         return Err(format!("{module} is not installed"));
     }
     if module == CORE {
@@ -157,13 +208,37 @@ pub fn remove(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
     if !refused.is_empty() {
         return Err(format!("not removed: {}", refused.join("; ")));
     }
+    let manifest = host.manifest(module)?;
     host.down(module)?;
-    let mut modules = installed.modules.clone();
-    modules.remove(module);
-    let order: Vec<String> = order.into_iter().filter(|m| m != module).collect();
-    host.put_modules(&installed.version, &modules, &order)?;
+    if is_installed {
+        let mut modules = installed.modules.clone();
+        modules.remove(module);
+        let order: Vec<String> = order.into_iter().filter(|m| m != module).collect();
+        host.put_modules(&installed.version, &modules, &order)?;
+    }
     host.routes()?;
+    let mut left = false;
+    if let Some(m) = &manifest {
+        left = provision::deprovision(p, m, &mut warnings)?;
+    }
     tell(host, &mut warnings);
+    let version = manifest
+        .as_ref()
+        .map(|m| m.version.to_string())
+        .unwrap_or_default();
+    p.audit(&provision::event("ModuleRemoved", module, &version, None));
+    if left {
+        p.save_progress(
+            module,
+            &Progress {
+                operation: "removing".into(),
+                version,
+                step: "clients".into(),
+            },
+        )?;
+    } else {
+        p.clear_progress(module)?;
+    }
     Ok(warnings)
 }
 
@@ -196,5 +271,9 @@ fn tell(host: &dyn ModuleHost, warnings: &mut Warnings) {
     }
 }
 
+#[cfg(test)]
+mod fake_provision;
+#[cfg(test)]
+mod provision_tests;
 #[cfg(test)]
 mod tests;
