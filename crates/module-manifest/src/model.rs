@@ -212,6 +212,21 @@ pub struct Volume {
     pub path: String,
     #[serde(default = "critical")]
     pub critical: bool,
+    /// How a critical volume is backed up before an update.
+    #[serde(default)]
+    pub backup: Backup,
+}
+
+/// How a critical volume is backed up (decision 0002).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Backup {
+    /// The agent copies it into the backup and checks the copy.
+    #[default]
+    Dump,
+    /// A replica in sync is its backup: the agent does not copy it, and
+    /// refuses the update unless the core says the replica is in sync.
+    Replica,
 }
 
 /// A file under the module's directory (`/opt/quality-data/<module>/`).
@@ -292,5 +307,20 @@ impl Data {
                 .collect(),
             keys: self.keys.iter().filter(|k| k.critical).cloned().collect(),
         }
+    }
+
+    /// The critical pieces the agent copies into a backup: every critical
+    /// one but the volumes whose backup is a replica.
+    pub fn dumped(&self) -> Data {
+        let mut data = self.critical();
+        data.volumes.retain(|v| v.backup == Backup::Dump);
+        data
+    }
+
+    /// The critical volumes whose backup is a replica in sync.
+    pub fn replicated(&self) -> impl Iterator<Item = &Volume> {
+        self.volumes
+            .iter()
+            .filter(|v| v.critical && v.backup == Backup::Replica)
     }
 }
