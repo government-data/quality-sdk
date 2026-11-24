@@ -138,6 +138,25 @@ fn critical_volumes_and_keys_are_backed_up_and_checked() {
 }
 
 #[test]
+fn a_volume_backed_up_by_a_replica_is_not_copied() {
+    let r = root("replica");
+    let dir = backup_dir(&r);
+    let (data, cp) = installed(&r, archive());
+    let manifest = MANIFEST.replace(
+        "path: /var/lib/dolt }",
+        "path: /var/lib/dolt, backup: replica }",
+    );
+    let file = r.join("opt/quality-data/quality-data/current/module.yaml");
+    std::fs::write(file, manifest).unwrap();
+    // The key only: the volume is neither copied nor listed.
+    assert_eq!(data.back_up_into(&dir, &["quality".into()]).unwrap(), 1);
+    assert!(cp.ran.borrow().is_empty());
+    let list: Vec<Piece> = serde_json::from_slice(&std::fs::read(dir.join(LIST)).unwrap()).unwrap();
+    assert!(matches!(list.as_slice(), [Piece::Key { .. }]), "{list:?}");
+    std::fs::remove_dir_all(r).unwrap();
+}
+
+#[test]
 fn a_piece_that_cannot_be_backed_up_whole_is_no_backup() {
     let r = root("bad");
     let dir = backup_dir(&r);

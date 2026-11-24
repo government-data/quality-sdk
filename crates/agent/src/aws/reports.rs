@@ -54,6 +54,10 @@ pub const MODULE_KINDS: &[&str] = &[
     "rotate_failed",
 ];
 
+/// The kind of the report of an update refused because a replica that
+/// backs up a critical volume is not in sync (decision 0002).
+pub const REPLICA_REFUSED: &str = "replica_refused";
+
 /// The name an outcome has in a report (the state file's).
 fn kind_name(kind: OutcomeKind) -> &'static str {
     match kind {

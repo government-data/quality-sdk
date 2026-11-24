@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use aws_client::http::{Request, Transport};
 use serde_json::{json, Value};
-use updater::engine::Drain;
+use updater::engine::{Drain, ReplicaState};
 use updater::policy::Orders;
 use updater::state::State;
 
@@ -186,6 +186,18 @@ impl Api for UpdaterApi {
                 .collect()
         });
         Ok(Features(names.unwrap_or_default()))
+    }
+
+    /// A core without the route answers 404: an error, so the update is
+    /// refused. A state it names that this agent does not know is
+    /// `unknown`.
+    fn replica(&self, module: &str) -> Result<ReplicaState, String> {
+        let path = format!("/modules/{module}/replica");
+        let v = self.call("GET", &path, None)?;
+        v["state"]
+            .as_str()
+            .map(ReplicaState::parse)
+            .ok_or_else(|| format!("GET {PREFIX}{path}: no `state` in its answer"))
     }
 }
 

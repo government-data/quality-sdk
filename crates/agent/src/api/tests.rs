@@ -255,6 +255,53 @@ fn the_features_are_read_and_a_core_without_them_has_none() {
 }
 
 #[test]
+fn a_module_s_replica_is_asked_and_a_core_without_the_route_is_an_error() {
+    let (base, sent) = server(&[(
+        "GET /updater/v1/modules/lake-rustfs/replica",
+        200,
+        r#"{"state":"behind"}"#,
+    )]);
+    assert_eq!(
+        api(&base).replica("lake-rustfs").unwrap(),
+        ReplicaState::Behind
+    );
+    assert_eq!(
+        sent.lock().unwrap()[0].1,
+        "/updater/v1/modules/lake-rustfs/replica"
+    );
+    let (base, _) = server(&[(
+        "GET /updater/v1/modules/lake-rustfs/replica",
+        200,
+        r#"{"state":"resyncing"}"#,
+    )]);
+    assert_eq!(
+        api(&base).replica("lake-rustfs").unwrap(),
+        ReplicaState::Unknown
+    );
+    let (base, _) = server(&[("GET /updater/v1/modules/lake-rustfs/replica", 200, "{}")]);
+    let err = api(&base).replica("lake-rustfs").unwrap_err();
+    assert!(err.contains("no `state`"), "{err}");
+    // An older core has no such route.
+    let (base, _) = server(&[]);
+    assert!(api(&base).replica("lake-rustfs").is_err());
+}
+
+#[test]
+fn a_module_says_the_capabilities_it_provides_and_none_is_not_sent() {
+    let lake = module_manifest::Manifest::parse(
+        "name: lake-rustfs\nversion: 0.1.0\nprovides:\n  capabilities:\n    \
+         - { name: lake, version: 1, protocols: [s3] }\n",
+    )
+    .unwrap();
+    let m = InstalledModule::new("lake-rustfs", "0.1.0", Some(&lake), &Features::default());
+    let body = serde_json::to_value(&m).unwrap();
+    assert_eq!(body["provides"], json!(["lake"]));
+    let docs = InstalledModule::new("docs", "0.2.0", None, &Features::default());
+    let body = serde_json::to_value(&docs).unwrap();
+    assert!(body.get("provides").is_none(), "{body}");
+}
+
+#[test]
 fn an_api_that_does_not_answer_fails_every_call_but_orders() {
     let a = api(&closed());
     let err = a.version().unwrap_err();

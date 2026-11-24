@@ -19,7 +19,9 @@
 //! --volumes-from <container> --entrypoint find <helper> <path> -mindepth
 //! 1 -delete`, as root, no network): it reaches the very volume the
 //! container has, named or anonymous. A piece that is not critical is not
-//! backed up.
+//! backed up, nor is a volume whose backup is a replica in sync (`backup:
+//! replica`): the engine goes ahead only if the core says it is in sync,
+//! and a restore leaves that volume as it is.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -123,12 +125,13 @@ impl ModuleData {
         Ok(all)
     }
 
-    /// Every critical piece of the installed modules' data into `dir`,
+    /// Every critical piece of the installed modules' data but the
+    /// replicated volumes into `dir`,
     /// checked, then listed in [`LIST`]; `databases` are those dumped.
     pub fn back_up_into(&self, dir: &Path, databases: &[String]) -> Result<usize, String> {
         let mut pieces = Vec::new();
         for m in self.manifests()? {
-            let data = m.data.critical();
+            let data = m.data.dumped();
             for db in &data.databases {
                 if !databases.contains(&db.name) {
                     return Err(format!(
