@@ -91,6 +91,7 @@ impl Cloud for Fakes {
         })
     }
     fn report(&self, _o: &Outcome) {}
+    fn report_replica_refused(&self, _o: &Outcome) {}
     fn download_package(&self, _o: &Offer, _p: &OfferedPackage) -> Result<PathBuf, String> {
         Err("not offered".into())
     }

@@ -137,6 +137,33 @@ fn an_outcome_is_reported_and_a_failed_report_does_not_matter() {
 }
 
 #[test]
+fn a_refusal_for_a_replica_not_in_sync_is_reported_as_replica_refused() {
+    let aws = FakeAws::default();
+    let (c, _) = cloud(&aws, "cloud-replica-refused");
+    let outcome = Outcome {
+        kind: OutcomeKind::Failed,
+        version: "1.4.0".into(),
+        from: "1.2.0".into(),
+        detail: "not updated: lake-rustfs's volume rustfs-data has no replica in sync (behind)"
+            .into(),
+        at: Utc::now(),
+    };
+    c.report_replica_refused(&outcome);
+    let sent = aws.sent.borrow();
+    assert!(
+        sent[0].url.contains("/reports/inst-0001/")
+            && sent[0].url.ends_with("-replica_refused-1.4.0.json"),
+        "{}",
+        sent[0].url
+    );
+    let body: serde_json::Value = serde_json::from_slice(&sent[0].body).unwrap();
+    assert_eq!(body["kind"], "replica_refused");
+    assert_eq!(body["detail"], outcome.detail);
+    assert!(body["channel"].is_string(), "{body}");
+    cleanup(&c);
+}
+
+#[test]
 fn a_first_installation_chooses_with_the_registry_and_reports_its_install() {
     let aws = serving(&index("stable", 3), 1);
     ecr_answers(&aws);

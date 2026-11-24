@@ -13,7 +13,9 @@ use agent::host::{
 use agent::paths::Paths;
 use chrono::{DateTime, TimeZone, Utc};
 use module_manifest::Manifest;
-use updater::engine::{advance, CloudError, Drain, Installed, Offer, OfferedPackage, Who};
+use updater::engine::{
+    advance, CloudError, Drain, Installed, Offer, OfferedPackage, ReplicaState, Who,
+};
 use updater::policy::Orders;
 use updater::state::{Module, Modules, Outcome, OutcomeKind, Phase, State};
 
@@ -74,6 +76,9 @@ impl Cloud for FakeCloud {
     }
     fn report(&self, o: &Outcome) {
         self.0.note(format!("cloud:report:{:?}", o.kind));
+    }
+    fn report_replica_refused(&self, o: &Outcome) {
+        self.0.note(format!("cloud:replica_refused:{}", o.version));
     }
     fn download_package(&self, _o: &Offer, p: &OfferedPackage) -> Result<PathBuf, String> {
         self.0.note(format!("cloud:download:{}", p.key));
@@ -198,6 +203,9 @@ impl Api for FakeApi {
     }
     fn features(&self) -> Result<Features, String> {
         Ok(Features::default())
+    }
+    fn replica(&self, _module: &str) -> Result<ReplicaState, String> {
+        Ok(ReplicaState::InSync)
     }
     fn version(&self) -> Result<String, String> {
         let answers = self.0.answers.borrow().clone();

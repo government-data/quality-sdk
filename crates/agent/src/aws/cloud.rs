@@ -16,7 +16,7 @@ use super::http::Https;
 use super::images::{pull_all, Docker, ImagePuller};
 use super::index::{first, offer, IndexReader};
 use super::packages::download;
-use super::reports::{Report, ReportModule, FORMAT, MODULE_KINDS};
+use super::reports::{Report, ReportModule, FORMAT, MODULE_KINDS, REPLICA_REFUSED};
 use crate::config::Config;
 use crate::host::Cloud;
 use crate::paths::Paths;
@@ -121,6 +121,16 @@ impl AwsCloud {
         }
     }
 
+    /// Write `report` with the channel; if it cannot be written, it does
+    /// not matter.
+    fn write_report(&self, mut report: Report<'_>) {
+        report.channel = Some(self.channel());
+        match report.write(&self.bucket) {
+            Ok(key) => tracing::info!("reported {key}"),
+            Err(err) => tracing::warn!("could not report the outcome: {err}"),
+        }
+    }
+
     /// A module operation's report (decision 0009): `kind` one of
     /// [`MODULE_KINDS`], `platform` the installed platform version (as
     /// `version` and `from`), `detail` the agent's error text; if it cannot
@@ -171,12 +181,15 @@ impl Cloud for AwsCloud {
 
     /// If it cannot be written, it does not matter: the update is done.
     fn report(&self, outcome: &Outcome) {
+        self.write_report(Report::of(&self.installation, outcome));
+    }
+
+    /// The outcome (`failed`, its detail naming the module, the volume
+    /// and the replica's state) under the kind [`REPLICA_REFUSED`].
+    fn report_replica_refused(&self, outcome: &Outcome) {
         let mut report = Report::of(&self.installation, outcome);
-        report.channel = Some(self.channel());
-        match report.write(&self.bucket) {
-            Ok(key) => tracing::info!("reported {key}"),
-            Err(err) => tracing::warn!("could not report the outcome: {err}"),
-        }
+        report.kind = REPLICA_REFUSED;
+        self.write_report(report);
     }
 
     /// The package of the module at its version in the offer.
