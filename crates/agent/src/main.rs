@@ -290,18 +290,27 @@ fn update(paths: &Paths, wait: bool) -> ExitCode {
     }
 }
 
-/// `module add|remove|rotate NAME`, under the agent's lock (decisions
-/// 0002 and 0009).
+/// `module add|remove|rotate NAME` and `module purge NAME [--confirm
+/// NAME]`, under the agent's lock (decisions 0002 and 0009).
 fn module(paths: &Paths, rest: &[String]) -> ExitCode {
-    use agent::modules::{adapters::Adapters, add, remove, rotate::rotate};
-    let [action, name] = rest else {
-        return usage("module needs add, remove or rotate, and a module's name");
-    };
-    let act = match action.as_str() {
-        "add" => add,
-        "remove" => remove,
-        "rotate" => rotate,
-        other => return usage(&format!("module {other:?}: add, remove or rotate")),
+    use agent::modules::{adapters::Adapters, add, purge::purge, remove, rotate::rotate};
+    type Act = Box<dyn Fn(&Adapters, &str) -> Result<Vec<String>, String>>;
+    let (action, name, act): (&String, &String, Act) = match rest {
+        [action, name] if action == "purge" => {
+            let typed = confirmation(name);
+            (action, name, Box::new(move |h, m| purge(h, m, &typed)))
+        }
+        [action, name, flag, typed] if action == "purge" && flag == "--confirm" => {
+            let typed = typed.clone();
+            (action, name, Box::new(move |h, m| purge(h, m, &typed)))
+        }
+        [action, name] => match action.as_str() {
+            "add" => (action, name, Box::new(|h, m| add(h, m))),
+            "remove" => (action, name, Box::new(|h, m| remove(h, m))),
+            "rotate" => (action, name, Box::new(|h, m| rotate(h, m))),
+            other => return usage(&format!("module {other:?}: add, remove, rotate or purge")),
+        },
+        _ => return usage("module needs add, remove, rotate or purge, and a module's name"),
     };
     logs();
     let done = agent::service::lock(paths)
@@ -320,6 +329,16 @@ fn module(paths: &Paths, rest: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The module's name, typed by the person to confirm a purge.
+fn confirmation(module: &str) -> String {
+    use std::io::Write;
+    print!("purge deletes {module} and its data after a backup; type {module} to go on: ");
+    let _ = std::io::stdout().flush();
+    let mut typed = String::new();
+    let _ = std::io::stdin().read_line(&mut typed);
+    typed.trim().to_string()
 }
 
 /// The internal certificate renewed when due, or now with `force`, under

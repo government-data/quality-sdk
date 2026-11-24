@@ -180,6 +180,17 @@ impl Postgres {
         self.run_sql(&format!("{what} for the role {role}"), &sql)
     }
 
+    /// `database` dumped into `file` and read back whole (a purge's
+    /// backup).
+    pub fn dump_checked(&self, database: &str, file: &std::path::Path) -> Result<(), String> {
+        let db = identifier(database)?;
+        let dump = r#"pg_dump -U "$POSTGRES_USER" -d "$1" --format=custom"#;
+        self.runner
+            .run(&self.in_database(dump, &[db])?.stdout(file))
+            .map_err(|e| format!("dumping {db}: {e}"))?;
+        self.check_dump(file)
+    }
+
     /// `databases` dropped with their sessions, then the role (`purge`).
     pub fn drop_module(&self, role: &str, databases: &[String]) -> Result<(), String> {
         let role = identifier(role)?;

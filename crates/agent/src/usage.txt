@@ -35,6 +35,14 @@ commands:
             secret accepted for at most an hour; the module is recreated
             with them. Its own generated files are not rotated. A rotation
             that stopped resumes. Refused while the service runs
+  module purge NAME [--confirm NAME]
+            delete a module and its data: removed first if installed
+            (with remove's refusal), quality-data records it first, then
+            a backup under /var/lib/quality-data/backups/purge/ (kept until
+            a person deletes it), its clients, permissions, databases,
+            role, volumes and folder. Asks for the module's name unless
+            --confirm gives it. A purge that stopped resumes. Refused while
+            the service runs
   update    ask for an update now, for a person on the server (decision
             0007): the request goes through quality-data, as the web's
             Update now; the running service starts it at its next round,

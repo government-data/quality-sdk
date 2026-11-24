@@ -121,7 +121,7 @@ impl Postgres {
     }
 
     /// The dump at `file` reads back whole and holds something.
-    fn check_dump(&self, file: &Path) -> Result<(), String> {
+    pub(crate) fn check_dump(&self, file: &Path) -> Result<(), String> {
         let list = self.run(&self.in_database("pg_restore --list", &[])?.stdin(file))?;
         let entries = list
             .lines()

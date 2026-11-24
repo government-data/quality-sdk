@@ -154,7 +154,7 @@ impl ModuleData {
         Ok(pieces.len())
     }
 
-    fn back_up_volume(
+    pub(crate) fn back_up_volume(
         &self,
         dir: &Path,
         module: &str,
@@ -177,7 +177,7 @@ impl ModuleData {
         })
     }
 
-    fn back_up_key(&self, dir: &Path, module: &str, key: &str) -> Result<Piece, String> {
+    pub(crate) fn back_up_key(&self, dir: &Path, module: &str, key: &str) -> Result<Piece, String> {
         let source = self.install.join(module).join(key);
         let file = format!("modules/{module}/keys/{key}");
         let copy = dir.join(&file);

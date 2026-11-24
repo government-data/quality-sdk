@@ -31,6 +31,8 @@ use updater::state::Modules;
 pub mod adapters;
 pub mod provision;
 pub mod provisioner;
+pub mod purge;
+mod purge_files;
 pub mod rotate;
 
 pub use provision::{Progress, Provision};
