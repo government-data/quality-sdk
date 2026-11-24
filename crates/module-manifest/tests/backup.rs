@@ -1,7 +1,7 @@
 //! `data.volumes[].backup` (decision 0002): `dump`, the default, is copied
 //! into the backup; `replica` is backed up by a replica in sync instead.
 
-use module_manifest::{Backup, Manifest, ManifestError};
+use module_manifest::{Backup, Manifest, ManifestError, MODULE_ADD_AGENT, REPLICA_BACKUP_AGENT};
 
 fn with_volumes(volumes: &str) -> String {
     format!("name: lake\nversion: 0.1.0\ndata:\n  volumes:\n{volumes}")
@@ -65,4 +65,42 @@ fn another_way_of_backing_up_does_not_read() {
         Manifest::parse(&text),
         Err(ManifestError::Malformed(_))
     ));
+}
+
+fn agent_needed(text: &str) -> Option<String> {
+    Manifest::parse(text)
+        .unwrap()
+        .agent_needed()
+        .map(|v| v.to_string())
+}
+
+#[test]
+fn a_replicated_volume_needs_the_agent_that_reads_backup() {
+    let replica = with_volumes("    - { name: d, service: s, path: /d, backup: replica }\n");
+    assert_eq!(
+        agent_needed(&replica).as_deref(),
+        Some(REPLICA_BACKUP_AGENT)
+    );
+    // A volume copied into the backup, as every agent does, needs none.
+    let dump = with_volumes("    - { name: d, service: s, path: /d }\n");
+    assert_eq!(agent_needed(&dump), None);
+}
+
+#[test]
+fn the_module_add_keys_alone_still_need_0_2_0() {
+    let text = "name: m\nversion: 1.0.0\nsecrets: { uid: 1000 }\n";
+    assert_eq!(agent_needed(text).as_deref(), Some(MODULE_ADD_AGENT));
+}
+
+#[test]
+fn keys_of_both_versions_need_the_highest() {
+    let text = format!(
+        "{}secrets: {{ uid: 1000 }}\n",
+        with_volumes("    - { name: d, service: s, path: /d, backup: replica }\n")
+    );
+    assert_eq!(agent_needed(&text).as_deref(), Some(REPLICA_BACKUP_AGENT));
+    assert!(
+        semver::Version::parse(REPLICA_BACKUP_AGENT).unwrap()
+            > semver::Version::parse(MODULE_ADD_AGENT).unwrap()
+    );
 }

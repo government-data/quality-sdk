@@ -49,3 +49,8 @@ pub use validate::RESERVED_MODULE_NAMES;
 /// The first agent version that reads what a module gets at `module add`
 /// (decision 0009); an older agent refuses those keys.
 pub const MODULE_ADD_AGENT: &str = "0.2.0";
+
+/// The first agent version that reads `data.volumes[].backup` (decision
+/// 0002): an older agent refuses the key, so a volume backed up by a
+/// replica would never be updated by it.
+pub const REPLICA_BACKUP_AGENT: &str = "0.3.0";
