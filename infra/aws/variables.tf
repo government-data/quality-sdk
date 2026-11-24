@@ -18,14 +18,15 @@ variable "modules" {
     no published version disappears by mistake. Third-party images a module
     runs are mirrored into its own repositories by digest
     (tools/mirror-image.sh): quality-data's traefik and postgres,
-    lake-rustfs's rustfs (its own image is admin, the lake admin adapter).
+    lake-rustfs's rustfs and gate (Traefik in front of the lake; its own
+    image is admin, the lake admin adapter).
   EOT
   type        = map(list(string))
   default = {
     "quality-data" = ["api", "web", "traefik", "postgres"]
     orchestrator   = ["api", "web"]
     docs           = ["web"]
-    "lake-rustfs"  = ["rustfs", "admin"]
+    "lake-rustfs"  = ["rustfs", "gate", "admin"]
   }
   validation {
     condition     = !contains(keys(var.modules), "tools")
