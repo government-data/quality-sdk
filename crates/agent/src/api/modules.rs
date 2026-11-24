@@ -159,7 +159,8 @@ impl Outbox {
         self.keep(event)
     }
 
-    fn keep(&self, event: &AuditEvent) -> Result<(), String> {
+    /// Keep `event` for later, without trying to send it.
+    pub fn keep(&self, event: &AuditEvent) -> Result<(), String> {
         let line = serde_json::to_string(event).map_err(|e| e.to_string())?;
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;

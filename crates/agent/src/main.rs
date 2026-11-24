@@ -240,6 +240,7 @@ fn run(paths: &Paths, every: Duration, once: bool) -> ExitCode {
         agent::service::renew(&renewer, chrono::Utc::now());
         host.tell_modules_if_untold();
         agent::service::flush_audit(paths);
+        agent::service::disable_left_clients(paths);
     };
     agent::service::run_with(&host, &paths.state_file(), every, rounds, &mut before);
     ExitCode::SUCCESS

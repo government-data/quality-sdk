@@ -95,6 +95,48 @@ pub fn flush_audit(paths: &Paths) {
     }
 }
 
+/// The clients of removed modules that quality-data did not disable when
+/// it was told (a `removing` progress file, decision 0009 point 8):
+/// disabled now, before each round, until it answers.
+pub fn disable_left_clients(paths: &Paths) {
+    use crate::modules::Provision;
+    let dir = paths.module_progress("x");
+    let Some(dir) = dir.parent() else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let modules: Vec<String> = entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name.strip_suffix(".json").map(str::to_string)
+        })
+        .collect();
+    if modules.is_empty() {
+        return;
+    }
+    let api = Config::load(&paths.config_file())
+        .ok()
+        .and_then(|c| c.api)
+        .and_then(|settings| UpdaterApi::from_settings(&settings, paths).ok());
+    let p = crate::modules::provisioner::Provisioner::new(paths, api, "unused");
+    for module in modules {
+        let Ok(Some(progress)) = p.progress(&module) else {
+            continue;
+        };
+        if progress.operation != "removing" {
+            continue;
+        }
+        match p
+            .disable_clients(&module)
+            .and_then(|()| p.clear_progress(&module))
+        {
+            Ok(()) => tracing::info!(%module, "the removed module's clients were disabled"),
+            Err(err) => tracing::debug!(%module, "its clients wait to be disabled: {err}"),
+        }
+    }
+}
+
 /// The agent's lock, held while it lives: one agent per installation.
 pub fn lock(paths: &Paths) -> Result<File, String> {
     let path = paths.data_dir().join("updater/agent.lock");
