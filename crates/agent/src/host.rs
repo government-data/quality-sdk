@@ -21,7 +21,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use module_manifest::Manifest;
+use std::collections::BTreeSet;
+
+use module_manifest::{Manifest, Permissions};
 use serde::Serialize;
 use updater::engine::{CloudError, Drain, Host, Installed, Offer, OfferedPackage};
 use updater::policy::Orders;
@@ -82,6 +84,30 @@ pub trait Api {
     fn version(&self) -> Result<String, String>;
     /// `PUT /updater/v1/modules`: every installed module, the whole list.
     fn put_modules(&self, modules: &[InstalledModule]) -> Result<(), String>;
+    /// The `features` of `GET /updater/v1/version`: what the core
+    /// understands beyond the first calls (decision 0009).
+    fn features(&self) -> Result<Features, String>;
+}
+
+/// What a core understands beyond the first `updater/v1` calls (decision
+/// 0009, point 6); a core that names none has none.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Features(pub BTreeSet<String>);
+
+impl Features {
+    /// `PUT …/modules/{module}/clients` and `…/clients/disable`.
+    pub const MODULE_CLIENTS: &'static str = "module-clients";
+    /// `menu.requires` in `PUT /updater/v1/modules`, checked by the apps
+    /// menu.
+    pub const MENU_REQUIRES: &'static str = "menu-requires";
+    /// `permissions` in `PUT /updater/v1/modules`.
+    pub const MODULE_PERMISSIONS: &'static str = "module-permissions";
+    /// `POST /updater/v1/audit`.
+    pub const AGENT_AUDIT: &'static str = "agent-audit";
+
+    pub fn has(&self, feature: &str) -> bool {
+        self.0.contains(feature)
+    }
 }
 
 /// An installed module as `PUT /updater/v1/modules` names it.
@@ -96,6 +122,10 @@ pub struct InstalledModule {
     pub route_path: Option<String>,
     /// Its entry in the core's apps menu (`null`: none).
     pub menu: Option<ModuleMenu>,
+    /// Its actions and managed policies, to a core that has
+    /// `module-permissions` only (absent otherwise).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<Permissions>,
 }
 
 /// A module's menu entry as `PUT /updater/v1/modules` names it: its label
@@ -104,6 +134,9 @@ pub struct InstalledModule {
 pub struct ModuleMenu {
     pub label: InLanguages,
     pub path: InLanguages,
+    /// The action a person must hold to see it (absent: everyone).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requires: Option<String>,
 }
 
 /// A text in each language the web speaks.
@@ -114,15 +147,21 @@ pub struct InLanguages {
 }
 
 impl InstalledModule {
-    /// `name` at `version`, with what its manifest declares.
-    pub fn new(name: &str, version: &str, manifest: Option<&Manifest>) -> Self {
+    /// `name` at `version`, with what its manifest declares that `features`
+    /// let the core understand.
+    pub fn new(
+        name: &str,
+        version: &str,
+        manifest: Option<&Manifest>,
+        features: &Features,
+    ) -> Self {
         let route = manifest.and_then(|m| m.route.as_ref());
-        // A menu shown only to who holds an action is not sent until the
-        // core is known to check it (decision 0009, point 6): hidden from
-        // everyone, never shown to everyone.
+        // A menu shown only to who holds an action goes to a core that
+        // checks it, or not at all: hidden from everyone, never shown to
+        // everyone (decision 0009, point 6).
         let menu = manifest
             .and_then(|m| m.menu.as_ref())
-            .filter(|menu| menu.requires.is_none())
+            .filter(|menu| menu.requires.is_none() || features.has(Features::MENU_REQUIRES))
             .zip(route)
             .map(|(menu, route)| {
                 let path = menu.paths(route);
@@ -135,6 +174,7 @@ impl InstalledModule {
                         en: path.en,
                         es: path.es,
                     },
+                    requires: menu.requires.clone(),
                 }
             });
         Self {
@@ -145,6 +185,9 @@ impl InstalledModule {
                 .map(|d| d.path.clone()),
             route_path: route.map(|r| r.path.clone()),
             menu,
+            permissions: manifest
+                .and_then(|m| m.permissions.clone())
+                .filter(|_| features.has(Features::MODULE_PERMISSIONS)),
         }
     }
 }
@@ -225,13 +268,22 @@ impl AgentHost {
     /// when it fails.
     pub fn put_modules(&self) -> Result<(), String> {
         let compose = &self.adapters.compose;
+        let features = self.adapters.api.features().unwrap_or_else(|err| {
+            tracing::debug!("quality-data's features are not known ({err}): none");
+            Features::default()
+        });
         compose.installed().and_then(|i| {
             let modules = i
                 .modules
                 .iter()
                 .map(|(name, m)| {
                     let manifest = compose.manifest(name)?;
-                    Ok(InstalledModule::new(name, &m.version, manifest.as_ref()))
+                    Ok(InstalledModule::new(
+                        name,
+                        &m.version,
+                        manifest.as_ref(),
+                        &features,
+                    ))
                 })
                 .collect::<Result<Vec<_>, String>>()?;
             self.adapters.api.put_modules(&modules)

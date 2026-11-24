@@ -10,7 +10,7 @@
 //! | `GET /updater/v1/orders` | `orders` (no answer: approval and no request) |
 //! | `PUT /updater/v1/maintenance` | `maintenance` |
 //! | `GET /updater/v1/drain?horizon_secs=N` | `drain` |
-//! | `GET /updater/v1/version` | the version part of `healthy` |
+//! | `GET /updater/v1/version` | the version part of `healthy`; its `features` (decision 0009) |
 //! | `PUT /updater/v1/modules` | which modules are installed (after a start, and when the agent starts) |
 //! | `POST /updater/v1/request` | "Update now" for a person on the server (`update`, decision 0007) |
 
@@ -22,7 +22,7 @@ use updater::engine::Drain;
 use updater::policy::Orders;
 use updater::state::State;
 
-use crate::host::{Api, InstalledModule};
+use crate::host::{Api, Features, InstalledModule};
 
 pub mod internal_files;
 pub mod renew;
@@ -173,6 +173,17 @@ impl Api for UpdaterApi {
     fn put_modules(&self, modules: &[InstalledModule]) -> Result<(), String> {
         let body = json!({ "modules": modules });
         self.call("PUT", "/modules", Some(&body)).map(|_| ())
+    }
+
+    /// A core that predates `features` answers without it: none.
+    fn features(&self) -> Result<Features, String> {
+        let v = self.call("GET", "/version", None)?;
+        let names = v["features"].as_array().map(|a| {
+            a.iter()
+                .filter_map(|f| f.as_str().map(str::to_string))
+                .collect()
+        });
+        Ok(Features(names.unwrap_or_default()))
     }
 }
 

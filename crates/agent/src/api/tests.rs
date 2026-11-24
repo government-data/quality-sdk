@@ -169,16 +169,12 @@ fn the_installed_modules_are_put_whole() {
          auth: forward\nmenu: { label: { en: User guide, es: Guía de usuario }, \
          path: { en: /docs/, es: /docs/es/ } }\n",
     );
+    let none = Features::default();
     let modules = [
-        InstalledModule::new("orchestrator", "2.0.1", Some(&orchestrator)),
-        InstalledModule::new("quality-data", "1.4.0", None),
-        InstalledModule::new("docs", "0.2.0", Some(&docs)),
+        InstalledModule::new("orchestrator", "2.0.1", Some(&orchestrator), &none),
+        InstalledModule::new("quality-data", "1.4.0", None, &none),
+        InstalledModule::new("docs", "0.2.0", Some(&docs), &none),
     ];
-    let bi = manifest(
-        "name: bi\nversion: 1.0.0\nroute: { path: /bi, service: web, port: 8080 }\n\
-         menu: { label: { en: BI, es: BI }, requires: quality:ViewResults }\n",
-    );
-    assert_eq!(InstalledModule::new("bi", "1.0.0", Some(&bi)).menu, None);
     api(&base).put_modules(&modules).unwrap();
     let sent = sent.lock().unwrap();
     assert_eq!(
@@ -203,6 +199,59 @@ fn the_installed_modules_are_put_whole() {
     assert!(err.contains("400 bad module"), "{err}");
     // An HTTP error is an answer.
     assert!(!no_answer(&err), "{err}");
+}
+
+/// A module with a menu condition and permissions (invented).
+const BI: &str = "name: bi\nversion: 1.0.0\nroute: { path: /bi, service: web, port: 8080 }\n\
+    menu: { label: { en: BI, es: BI }, requires: 'bi:Author' }\n\
+    permissions:\n  actions: [{ name: 'bi:Author', description: { en: Author, es: Autor } }]\n";
+
+#[test]
+fn a_menu_condition_and_permissions_go_to_a_core_that_has_their_features() {
+    let bi = module_manifest::Manifest::parse(BI).unwrap();
+    // An older core: no menu (hidden from everyone), no permissions.
+    let older = InstalledModule::new("bi", "1.0.0", Some(&bi), &Features::default());
+    assert_eq!(
+        (older.menu.as_ref(), older.permissions.as_ref()),
+        (None, None)
+    );
+    let body = serde_json::to_value(&older).unwrap();
+    assert!(body.get("permissions").is_none(), "{body}");
+    let features = Features(
+        ["menu-requires", "module-permissions"]
+            .map(String::from)
+            .into(),
+    );
+    let newer = InstalledModule::new("bi", "1.0.0", Some(&bi), &features);
+    let body = serde_json::to_value(&newer).unwrap();
+    assert_eq!(body["menu"]["requires"], "bi:Author");
+    assert_eq!(body["permissions"]["actions"][0]["name"], "bi:Author");
+    assert_eq!(
+        body["permissions"]["actions"][0]["description"]["es"],
+        "Autor"
+    );
+    assert_eq!(body["permissions"]["policies"], json!([]));
+    // A menu without a condition is sent to any core, without `requires`.
+    let plain = BI.replace(", requires: 'bi:Author'", "");
+    let plain = module_manifest::Manifest::parse(&plain).unwrap();
+    let m = InstalledModule::new("bi", "1.0.0", Some(&plain), &Features::default());
+    let body = serde_json::to_value(&m).unwrap();
+    assert!(body["menu"].get("requires").is_none(), "{body}");
+}
+
+#[test]
+fn the_features_are_read_and_a_core_without_them_has_none() {
+    let (base, _) = server(&[(
+        "GET /updater/v1/version",
+        200,
+        r#"{"version":"1.5.0","features":["menu-requires","module-clients"]}"#,
+    )]);
+    let f = api(&base).features().unwrap();
+    assert!(f.has(Features::MENU_REQUIRES) && f.has(Features::MODULE_CLIENTS));
+    assert!(!f.has(Features::AGENT_AUDIT));
+    let (base, _) = server(&[("GET /updater/v1/version", 200, r#"{"version":"1.4.0"}"#)]);
+    assert_eq!(api(&base).features().unwrap(), Features::default());
+    assert!(no_answer(&api(&closed()).features().unwrap_err()));
 }
 
 #[test]
