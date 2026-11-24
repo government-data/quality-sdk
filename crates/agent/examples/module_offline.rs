@@ -123,6 +123,8 @@ impl ModuleHost for Offline {
     fn provision(&self) -> &dyn Provision {
         &self.provisioner
     }
+    /// No AWS: nothing is reported.
+    fn report(&self, _kind: &str, _platform: &str, _module: &str, _version: &str, _detail: &str) {}
 }
 
 fn main() -> ExitCode {

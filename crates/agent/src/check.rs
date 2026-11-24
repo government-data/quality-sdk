@@ -89,6 +89,7 @@ pub fn run(paths: &Paths, installed: Option<&str>, download: bool) -> Result<(),
         from: &installed,
         at: Utc::now(),
         detail: "",
+        module: None,
     };
     let key = report
         .write(&cloud.bucket)

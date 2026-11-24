@@ -67,6 +67,10 @@ pub trait ModuleHost {
     fn tell_core(&self) -> Result<(), String>;
     /// What a module gets: secrets, database, clients (decision 0009).
     fn provision(&self) -> &dyn Provision;
+    /// A module operation's report to AWS (decision 0009, point 9): `kind`
+    /// as `aws::reports::MODULE_KINDS`, at the installed `platform`
+    /// version; if it cannot be written, it does not matter.
+    fn report(&self, kind: &str, platform: &str, module: &str, version: &str, detail: &str);
 }
 
 /// What a command did: its warnings, for the person.
@@ -109,22 +113,7 @@ pub fn add(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
     }
     let others = installed.modules.keys().filter(|m| *m != module);
     let manifests = manifests(host, others)?;
-    let mut warnings = Vec::new();
-    let mut missing = Vec::new();
-    for u in unmet(&manifest, &manifests) {
-        let what = format!(
-            "{module} requires {} {} ({:?})",
-            u.capability, u.version, u.why
-        );
-        if u.optional {
-            warnings.push(format!("{what}: optional, added without it"));
-        } else {
-            missing.push(what);
-        }
-    }
-    if !missing.is_empty() {
-        return Err(format!("not added: {}", missing.join("; ")));
-    }
+    let mut warnings = requirements(&manifest, &manifests)?;
     if manifest.oidc.is_some() || manifest.permissions.is_some() {
         provision::check_features(&manifest, &p.features()?)?;
     }
@@ -168,14 +157,45 @@ pub fn add(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
             &version,
             Some((&at, &err)),
         ));
+        host.report(
+            "module_add_failed",
+            &installed.version,
+            module,
+            &version,
+            &err,
+        );
         return Err(format!(
             "{err} ({module} stopped at {at}: qd module add {module} resumes it)"
         ));
     }
     tell(host, &mut warnings);
     p.audit(&provision::event("ModuleAdded", module, &version, None));
+    host.report("module_added", &installed.version, module, &version, "");
     p.clear_progress(module)?;
     Ok(warnings)
+}
+
+/// The warnings of `m`'s optional requirements that `installed` does not
+/// meet; refused when a required one is not met.
+fn requirements(m: &Manifest, installed: &[Manifest]) -> Result<Warnings, String> {
+    let mut warnings = Vec::new();
+    let mut missing = Vec::new();
+    for u in unmet(m, installed) {
+        let what = format!(
+            "{} requires {} {} ({:?})",
+            m.name, u.capability, u.version, u.why
+        );
+        if u.optional {
+            warnings.push(format!("{what}: optional, added without it"));
+        } else {
+            missing.push(what);
+        }
+    }
+    if missing.is_empty() {
+        Ok(warnings)
+    } else {
+        Err(format!("not added: {}", missing.join("; ")))
+    }
 }
 
 /// Remove `module`, keeping its data, its secrets, its role and its
@@ -230,6 +250,7 @@ pub fn remove(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
         .map(|m| m.version.to_string())
         .unwrap_or_default();
     p.audit(&provision::event("ModuleRemoved", module, &version, None));
+    host.report("module_removed", &installed.version, module, &version, "");
     if left {
         p.save_progress(
             module,

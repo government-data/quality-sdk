@@ -109,6 +109,9 @@ pub fn rotate(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
         &version,
         failed,
     ));
+    if rotated.is_ok() {
+        host.report("module_rotated", &installed.version, module, &version, "");
+    }
     rotated.map_err(|e| {
         format!("{e} ({module} stopped at {at}: qd module rotate {module} resumes it)")
     })?;
