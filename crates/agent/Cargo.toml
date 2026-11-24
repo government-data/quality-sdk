@@ -24,6 +24,8 @@ base64.workspace = true
 chrono.workspace = true
 flate2.workspace = true
 hex.workspace = true
+# The SCRAM-SHA-256 verifier of a module's role (decision 0009).
+hmac.workspace = true
 index-model.workspace = true
 module-manifest.workspace = true
 # A new key and its certificate request at each renewal of the agent's

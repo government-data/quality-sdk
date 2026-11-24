@@ -89,7 +89,7 @@ impl Postgres {
 
     /// `script` run by `sh` in the database's container as its superuser;
     /// `args` are `$1`... (never part of the script).
-    fn in_database(&self, script: &str, args: &[&str]) -> Result<Cmd, String> {
+    pub(crate) fn in_database(&self, script: &str, args: &[&str]) -> Result<Cmd, String> {
         let mut all = vec!["exec", "-T", &self.service, "sh", "-c", script, "sh"];
         all.extend_from_slice(args);
         compose::command(&self.install, &self.module, &all)

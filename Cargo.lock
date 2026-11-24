@@ -17,6 +17,7 @@ dependencies = [
  "chrono",
  "flate2",
  "hex",
+ "hmac",
  "index-model",
  "module-manifest",
  "p256",
