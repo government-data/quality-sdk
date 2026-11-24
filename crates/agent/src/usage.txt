@@ -29,6 +29,12 @@ commands:
             capabilities met; route, menu entry, health), or remove one
             (refused while another requires what only it provides; its
             data kept). Refused while the service runs (stop it first)
+  module rotate NAME
+            new values of the secrets the agent issues for a module (its
+            OIDC clients' and its database role's), the previous OIDC
+            secret accepted for at most an hour; the module is recreated
+            with them. Its own generated files are not rotated. A rotation
+            that stopped resumes. Refused while the service runs
   update    ask for an update now, for a person on the server (decision
             0007): the request goes through quality-data, as the web's
             Update now; the running service starts it at its next round,

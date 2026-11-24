@@ -19,6 +19,8 @@ pub(crate) struct FakeProvision {
     /// What was asked of the core and PostgreSQL, in order.
     pub(crate) notes: RefCell<Vec<String>>,
     pub(crate) events: RefCell<Vec<AuditEvent>>,
+    /// Every body of `PUT …/clients`.
+    pub(crate) sent: RefCell<Vec<Clients>>,
     /// The core does not answer `…/clients` and `…/disable`.
     pub(crate) core_down: RefCell<bool>,
     /// Saving this step's progress fails, as a crash right before it.
@@ -94,6 +96,24 @@ impl Provision for FakeProvision {
             .map(Secret::new)
             .ok_or_else(|| format!("{module}/secrets/{name} (read): not found"))
     }
+    fn stage_next(&self, module: &str, name: &str, bytes: u32) -> Result<(), String> {
+        let next = format!("{name}.next");
+        self.ensure_secret(module, &next, bytes, 0)
+    }
+    fn read_next(&self, module: &str, name: &str) -> Result<Option<Secret>, String> {
+        Ok(self
+            .secret_of(module, &format!("{name}.next"))
+            .map(Secret::new))
+    }
+    fn promote_next(&self, module: &str, name: &str, _uid: u32) -> Result<(), String> {
+        let next = (module.to_string(), format!("{name}.next"));
+        let mut secrets = self.secrets.borrow_mut();
+        if let Some(v) = secrets.remove(&next) {
+            secrets.insert((module.to_string(), name.to_string()), v);
+        }
+        self.note(format!("promote_next {name}"));
+        Ok(())
+    }
     fn write_env(&self, module: &str, vars: &[(&str, String)]) -> Result<(), String> {
         let vars = vars
             .iter()
@@ -124,6 +144,7 @@ impl Provision for FakeProvision {
         if *self.core_down.borrow() {
             return Err("PUT /updater/v1/modules/x/clients: quality-data does not answer".into());
         }
+        self.sent.borrow_mut().push(clients.clone());
         let people = clients
             .people
             .as_ref()

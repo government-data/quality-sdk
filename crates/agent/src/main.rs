@@ -290,16 +290,18 @@ fn update(paths: &Paths, wait: bool) -> ExitCode {
     }
 }
 
-/// `module add|remove NAME`, under the agent's lock (decision 0002).
+/// `module add|remove|rotate NAME`, under the agent's lock (decisions
+/// 0002 and 0009).
 fn module(paths: &Paths, rest: &[String]) -> ExitCode {
-    use agent::modules::{adapters::Adapters, add, remove};
+    use agent::modules::{adapters::Adapters, add, remove, rotate::rotate};
     let [action, name] = rest else {
-        return usage("module needs add or remove, and a module's name");
+        return usage("module needs add, remove or rotate, and a module's name");
     };
     let act = match action.as_str() {
         "add" => add,
         "remove" => remove,
-        other => return usage(&format!("module {other:?}: add or remove")),
+        "rotate" => rotate,
+        other => return usage(&format!("module {other:?}: add, remove or rotate")),
     };
     logs();
     let done = agent::service::lock(paths)

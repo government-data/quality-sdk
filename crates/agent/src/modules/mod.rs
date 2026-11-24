@@ -31,6 +31,7 @@ use updater::state::Modules;
 pub mod adapters;
 pub mod provision;
 pub mod provisioner;
+pub mod rotate;
 
 pub use provision::{Progress, Provision};
 
