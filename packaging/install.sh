@@ -32,7 +32,7 @@
 # 6. The core's files beside its versions, in /opt/quality-data/quality-data
 #    (core decisions 0080, 0081, 0082): .env (0600), secrets/ (the database
 #    URL for the API's user, uid 65532; PostgreSQL's password for its user,
-#    uid 70), certs/ (Traefik's default certificate, self-signed), ca/,
+#    uid 70; Dolt's root and application passwords, uid 65532), certs/ (Traefik's default certificate, self-signed), ca/,
 #    internal/ and machine/. The web's certificate (core decision 0087),
 #    QD_TLS_MODE: `file` (the default) serves certs/local.crt, the
 #    certificate of --tls-cert and --tls-key (their public keys must match)
@@ -341,9 +341,20 @@ if [[ ! -f "$MOD/secrets/database_url" ]]; then
     "$(env_value APP_DB_USER)" "$(env_value APP_DB_PASSWORD)" "${A[machine-name]}" \
     "$(env_value POSTGRES_DB)" >"$MOD/secrets/database_url"
 fi
-chmod 0400 "$MOD/secrets/postgres_superuser_password" "$MOD/secrets/database_url"
+# Dolt's root and application passwords (core decision 0080, amended
+# 2026-11-24), as the agent generates its manifest's secrets when missing
+# (decision 0009): 32 random bytes, base64url, no newline, 0400, the API's
+# user's (the core's secrets.uid); the agent keeps a file that exists.
+for f in dolt-root-password dolt-app-password; do
+  if [[ ! -f "$MOD/secrets/$f" ]]; then
+    openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n' >"$MOD/secrets/.$f.new"
+    mv -f "$MOD/secrets/.$f.new" "$MOD/secrets/$f"
+  fi
+done
+chmod 0400 "$MOD/secrets/postgres_superuser_password" "$MOD/secrets/database_url" \
+  "$MOD/secrets/dolt-root-password" "$MOD/secrets/dolt-app-password"
 own "$PG_UID" "$MOD/secrets/postgres_superuser_password"
-own "$APP_UID" "$MOD/secrets/database_url"
+own "$APP_UID" "$MOD/secrets/database_url" "$MOD/secrets/dolt-root-password" "$MOD/secrets/dolt-app-password"
 if [[ -n "${A[tls-cert]:-}" ]]; then
   # The customer's certificate (checked above), aside then renamed.
   if ! cmp -s "${A[tls-cert]}" "$MOD/certs/local.crt" || ! cmp -s "${A[tls-key]}" "$MOD/certs/local.key"; then
