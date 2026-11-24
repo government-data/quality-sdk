@@ -244,6 +244,20 @@ impl Manifest {
         self.data.databases.iter().filter(|d| d.create)
     }
 
+    /// The agent version that first reads the keys this manifest uses
+    /// (decision 0009): [`crate::MODULE_ADD_AGENT`] for `oidc`, `secrets`,
+    /// `data.databases[].create`, `menu.requires` or `permissions`; none
+    /// for a manifest that uses none of them.
+    pub fn agent_needed(&self) -> Option<semver::Version> {
+        let uses = self.oidc.is_some()
+            || self.permissions.is_some()
+            || !self.secrets.generate.is_empty()
+            || self.secrets.uid != 0
+            || self.created_databases().next().is_some()
+            || self.menu.as_ref().is_some_and(|m| m.requires.is_some());
+        uses.then(|| semver::Version::parse(crate::MODULE_ADD_AGENT).expect("a version"))
+    }
+
     /// The module's PostgreSQL role, when it has a database the agent
     /// creates: its name with `-` as `_`.
     pub fn database_role(&self) -> Option<String> {

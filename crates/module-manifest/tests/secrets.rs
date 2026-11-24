@@ -153,3 +153,32 @@ fn todays_manifests_parse_unchanged() {
         assert_eq!(m.database_role(), None);
     }
 }
+
+#[test]
+fn a_manifest_with_these_keys_needs_the_agent_that_reads_them() {
+    let needed = module_manifest::MODULE_ADD_AGENT;
+    assert_eq!(
+        Manifest::parse(BI)
+            .unwrap()
+            .agent_needed()
+            .unwrap()
+            .to_string(),
+        needed
+    );
+    for rest in [
+        "secrets: { uid: 1000 }\n",
+        "route: { path: /m, service: s, port: 1 }\nmenu: { label: { en: M, es: M }, requires: 'quality:View' }\n",
+        "permissions: { actions: [] }\n",
+        "route: { path: /m, service: s, port: 1 }\noidc: { people: { redirect_paths: [/m/cb] } }\n",
+    ] {
+        let m = Manifest::parse(&format!("name: m\nversion: 1.0.0\n{rest}")).unwrap();
+        assert_eq!(m.agent_needed().unwrap().to_string(), needed, "{rest}");
+    }
+    for text in [
+        include_str!("fixtures/docs.yaml"),
+        include_str!("fixtures/quality-data.yaml"),
+        include_str!("fixtures/lake-rustfs.yaml"),
+    ] {
+        assert_eq!(Manifest::parse(text).unwrap().agent_needed(), None);
+    }
+}

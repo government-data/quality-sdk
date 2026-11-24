@@ -45,3 +45,7 @@ pub use secrets::{
     MAX_CREATED_DATABASES, OIDC_MACHINE_SECRET, OIDC_PEOPLE_SECRET, SECRET_BYTES,
 };
 pub use validate::RESERVED_MODULE_NAMES;
+
+/// The first agent version that reads what a module gets at `module add`
+/// (decision 0009); an older agent refuses those keys.
+pub const MODULE_ADD_AGENT: &str = "0.2.0";

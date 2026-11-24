@@ -226,6 +226,9 @@ fn publish(args: &Args) -> Result<(), String> {
         release,
         chrono::Utc::now(),
     )?;
+    for w in &done.warnings {
+        eprintln!("warning   {w}");
+    }
     for p in &done.uploaded {
         eprintln!("package   {p} (uploaded)");
     }

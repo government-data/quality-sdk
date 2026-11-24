@@ -35,3 +35,8 @@ serde_json.workspace = true
 sha2 = { workspace = true, features = ["oid"] }
 toml.workspace = true
 x509-cert.workspace = true
+
+[dev-dependencies]
+# Module packages built in the publish tests (decision 0009, Q11).
+flate2.workspace = true
+tar.workspace = true

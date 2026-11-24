@@ -14,8 +14,12 @@
 //! 5. The index is read again: if another publication came in between, it
 //!    stops. Then `index/<channel>.json` and its `.sig` are written.
 //!
+//! It warns, and goes on, when a package's manifest needs a newer agent
+//! than the oldest agent of the channel ([`agents`], decision 0009).
+//!
 //! Every step can run again: a failed publication is published again.
 
+pub mod agents;
 pub mod images;
 pub mod input;
 
@@ -33,6 +37,8 @@ use input::Release;
 pub trait Store {
     fn get_if_exists(&self, key: &str) -> Result<Option<Vec<u8>>, String>;
     fn put(&self, key: &str, body: Vec<u8>, content_type: &str) -> Result<(), String>;
+    /// Every key under `prefix`.
+    fn list(&self, prefix: &str) -> Result<Vec<String>, String>;
 }
 
 impl Store for Bucket {
@@ -42,6 +48,10 @@ impl Store for Bucket {
 
     fn put(&self, key: &str, body: Vec<u8>, content_type: &str) -> Result<(), String> {
         Bucket::put(self, key, body, content_type).map_err(|e| e.to_string())
+    }
+
+    fn list(&self, prefix: &str) -> Result<Vec<String>, String> {
+        Bucket::list(self, prefix).map_err(|e| e.to_string())
     }
 }
 
@@ -64,6 +74,9 @@ pub struct Published {
     /// Package keys uploaded, and those already there with the same bytes.
     pub uploaded: Vec<String>,
     pub kept: Vec<String>,
+    /// Packages whose manifest needs a newer agent than the channel's
+    /// oldest ([`agents`]).
+    pub warnings: Vec<String>,
 }
 
 pub fn channel_key(channel: Channel) -> String {
@@ -118,6 +131,9 @@ pub fn publish(
     let added = next.versions.last().ok_or("no version to publish")?;
     images::check(registry, added)?;
 
+    let reported = agents::oldest_reported(store, channel)?;
+    let warnings = agents::warnings(&release.packages, reported, release.min_agent.as_ref())?;
+
     let (mut uploaded, mut kept) = (Vec::new(), Vec::new());
     for p in release.packages {
         match store.get_if_exists(&p.key)? {
@@ -152,5 +168,6 @@ pub fn publish(
         sequence: next.sequence,
         uploaded,
         kept,
+        warnings,
     })
 }

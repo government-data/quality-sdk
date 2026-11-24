@@ -43,6 +43,13 @@ impl Store for Memory {
         self.objects.borrow_mut().insert(key.into(), body);
         Ok(())
     }
+    fn list(&self, prefix: &str) -> Result<Vec<String>, String> {
+        let o = self.objects.borrow();
+        Ok(o.keys()
+            .filter(|k| k.starts_with(prefix))
+            .cloned()
+            .collect())
+    }
 }
 
 /// The installations' registry: every image of [`release`] is there, and
@@ -404,4 +411,87 @@ fn every_image_must_be_in_the_installations_registry_before_anything_is_written(
     .unwrap_err();
     assert!(err.contains(&format!("is not in {REGISTRY}")), "{err}");
     assert!(m.objects.borrow().is_empty());
+}
+
+/// A package whose `module.yaml` is `manifest`.
+fn package_with(manifest: &str) -> Vec<u8> {
+    let gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    let mut b = tar::Builder::new(gz);
+    let mut h = tar::Header::new_gnu();
+    h.set_size(manifest.len() as u64);
+    h.set_mode(0o644);
+    h.set_cksum();
+    b.append_data(&mut h, "module.yaml", manifest.as_bytes())
+        .unwrap();
+    b.into_inner().unwrap().finish().unwrap()
+}
+
+/// A report of an invented installation, with its agent and channel.
+fn report(m: &Memory, installation: &str, at: &str, agent: &str, channel: Option<&str>) {
+    let mut r = serde_json::json!({"format": 1, "installation": installation, "agent": agent,
+        "kind": "updated", "version": "1.3.0", "from": "1.2.0", "at": at, "detail": ""});
+    if let Some(c) = channel {
+        r["channel"] = c.into();
+    }
+    m.objects.borrow_mut().insert(
+        format!("reports/{installation}/{at}-updated-1.3.0.json"),
+        serde_json::to_vec(&r).unwrap(),
+    );
+}
+
+const NEEDS_NEW_AGENT: &str =
+    "name: quality-data\nversion: 1.4.0\nsecrets: { generate: [{ name: k }] }\n";
+
+fn publish_with(m: &Memory, manifest: &str, min_agent: Option<&str>) -> Vec<String> {
+    let mut r = release("1.4.0", &package_with(manifest));
+    r.min_agent = min_agent.map(|v| semver::Version::parse(v).unwrap());
+    let done = publish(
+        m,
+        &signer(1),
+        &Ecr::default(),
+        &key(1),
+        Channel::Stable,
+        r,
+        at(0),
+    )
+    .unwrap();
+    assert_eq!(done.sequence, 1, "published either way");
+    done.warnings
+}
+
+#[test]
+fn a_package_that_needs_a_newer_agent_than_the_channel_has_warns() {
+    let m = Memory::default();
+    // inst-a's newest report is 0.1.0; inst-b follows another channel.
+    report(&m, "inst-a", "20261120T000000Z", "0.2.0", None);
+    report(&m, "inst-a", "20261121T000000Z", "0.1.0", None);
+    report(&m, "inst-b", "20261121T000000Z", "0.0.9", Some("patch"));
+    report(&m, "inst-c", "20261121T000000Z", "0.2.0", Some("stable"));
+    let w = publish_with(&m, NEEDS_NEW_AGENT, None);
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(
+        w[0].contains("needs agent 0.2.0") && w[0].contains("has agent 0.1.0"),
+        "{w:?}"
+    );
+    assert!(w[0].contains("2 installations"), "{w:?}");
+}
+
+#[test]
+fn an_agent_as_new_as_needed_or_no_need_does_not_warn() {
+    let m = Memory::default();
+    report(&m, "inst-c", "20261121T000000Z", "0.2.0", Some("stable"));
+    assert!(publish_with(&m, NEEDS_NEW_AGENT, None).is_empty());
+    let m = Memory::default();
+    report(&m, "inst-a", "20261121T000000Z", "0.1.0", None);
+    assert!(publish_with(&m, "name: quality-data\nversion: 1.4.0\n", None).is_empty());
+    // Nothing reported and no minimum: nothing is known, nothing warns.
+    assert!(publish_with(&Memory::default(), NEEDS_NEW_AGENT, None).is_empty());
+}
+
+#[test]
+fn a_configured_minimum_counts_as_the_oldest_agent() {
+    let w = publish_with(&Memory::default(), NEEDS_NEW_AGENT, Some("0.1.0"));
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].contains("min_agent 0.1.0"), "{w:?}");
+    assert!(publish_with(&Memory::default(), NEEDS_NEW_AGENT, Some("0.2.0")).is_empty());
 }
