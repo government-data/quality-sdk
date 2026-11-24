@@ -28,6 +28,9 @@ fn a_person_updates_end_to_end() {
             "put_package:orchestrator:/packages/orchestrator-1.3.0.tar.gz:remove=assets/app-1.2.0.js",
             "put_package:quality-data:/packages/quality-data-1.3.0.tar.gz:remove=assets/app-1.2.0.js",
             "put_version:1.3.0",
+            // What each new package asks for, before anything starts.
+            "provision:orchestrator",
+            "provision:quality-data",
             "start:1.3.0",
             "healthy:1.3.0",
             "install_commands",
@@ -110,4 +113,22 @@ fn every_module_of_the_version_reaches_the_host() {
         _ => None,
     });
     assert_eq!(previous.unwrap().modules, modules("1.2.0"));
+}
+
+#[test]
+fn a_provision_that_fails_goes_back_before_anything_starts() {
+    let f = Fake::new().failing("provision:orchestrator");
+    let mut s = State::new("1.2.0");
+    run(&f, &mut s, Who::Person);
+    assert_eq!(s.installed_version, "1.2.0");
+    let last = s.last.as_ref().unwrap();
+    assert_eq!(last.kind, OutcomeKind::RolledBack);
+    assert!(
+        last.detail
+            .contains("orchestrator: quality-data does not answer"),
+        "{}",
+        last.detail
+    );
+    assert!(!f.did("start:1.3.0"), "the new version did not start");
+    assert!(f.did("start:1.2.0"), "the previous one started again");
 }

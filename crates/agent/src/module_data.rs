@@ -143,6 +143,11 @@ impl ModuleData {
             for k in &data.keys {
                 pieces.push(self.back_up_key(dir, &m.name, &k.path)?);
             }
+            // A generated secret that is critical is a key (decision 0009).
+            for g in m.secrets.generate.iter().filter(|g| g.critical) {
+                let key = format!("secrets/{}", g.name);
+                pieces.push(self.back_up_key(dir, &m.name, &key)?);
+            }
         }
         let json = serde_json::to_vec_pretty(&pieces).map_err(|e| e.to_string())?;
         std::fs::write(dir.join(LIST), json).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -212,6 +217,7 @@ impl ModuleData {
                     let target = self.install.join(module).join(path);
                     make_dirs(&target)?;
                     write_private(&target, &bytes)?;
+                    self.give_secret(module, path, &target)?;
                 }
             }
         }
@@ -221,6 +227,30 @@ impl ModuleData {
 }
 
 impl ModuleData {
+    /// A restored file the module's `secrets.generate` names, as the agent
+    /// makes it: mode `0400`, owned by `secrets.uid` when the agent runs as
+    /// root. Any other key keeps `0600`.
+    fn give_secret(&self, module: &str, key: &str, file: &Path) -> Result<(), String> {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let Some(m) = crate::manifests::read(&self.install, module)? else {
+            return Ok(());
+        };
+        let generated = m
+            .secrets
+            .generate
+            .iter()
+            .any(|g| key == format!("secrets/{}", g.name));
+        if !generated {
+            return Ok(());
+        }
+        let what = |e: std::io::Error| format!("{}: {e}", file.display());
+        std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o400)).map_err(what)?;
+        if std::fs::metadata(file).map_err(what)?.uid() == 0 {
+            std::os::unix::fs::chown(file, Some(m.secrets.uid), None).map_err(what)?;
+        }
+        Ok(())
+    }
+
     /// The volume at `path` of `service`'s stopped container emptied, then
     /// `archive` extracted into it.
     fn restore_volume(

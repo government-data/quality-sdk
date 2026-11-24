@@ -44,6 +44,11 @@ pub fn assemble(paths: &Paths) -> Result<AgentHost, String> {
         database: Box::new(Postgres::new(paths, &config.helper_image())),
         packages: Box::new(PackageFiles::new(paths)),
         api: Box::new(UpdaterApi::from_settings(api, paths)?),
+        provision: Box::new(crate::modules::provisioner::Provisioner::new(
+            paths,
+            Some(UpdaterApi::from_settings(api, paths)?),
+            &config.helper_image(),
+        )),
         clock: Box::new(SystemClock),
     };
     Ok(AgentHost::new(adapters, paths.state_file()))

@@ -254,3 +254,33 @@ fn a_volume_that_cannot_be_emptied_is_not_restored_over() {
         std::fs::remove_dir_all(r).unwrap();
     }
 }
+
+#[test]
+fn a_critical_generated_secret_is_a_key_restored_with_mode_0400() {
+    let r = root("generated");
+    let dir = backup_dir(&r);
+    let (data, _) = installed(&r, archive());
+    let module = r.join("opt/quality-data/quality-data");
+    let text = format!(
+        "{MANIFEST}secrets:\n  generate:\n    - {{ name: secret-key }}\n    \
+         - {{ name: scratch-key, critical: false }}\n"
+    );
+    std::fs::write(module.join("current/module.yaml"), text).unwrap();
+    std::fs::write(module.join("secrets/secret-key"), "qs-test-not-real").unwrap();
+    std::fs::write(module.join("secrets/scratch-key"), "qs-test-not-real-2").unwrap();
+    data.back_up_into(&dir, &["quality".into()]).unwrap();
+    let copy = dir.join("modules/quality-data/keys/secrets/secret-key");
+    assert_eq!(std::fs::read_to_string(&copy).unwrap(), "qs-test-not-real");
+    assert!(!dir
+        .join("modules/quality-data/keys/secrets/scratch-key")
+        .exists());
+    std::fs::remove_file(module.join("secrets/secret-key")).unwrap();
+    data.restore(&dir).unwrap();
+    let back = module.join("secrets/secret-key");
+    assert_eq!(std::fs::read_to_string(&back).unwrap(), "qs-test-not-real");
+    let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&back), 0o400);
+    // A key the module does not generate keeps 0600.
+    assert_eq!(mode(&module.join("secrets/a.key")), 0o600);
+    std::fs::remove_dir_all(r).unwrap();
+}

@@ -172,6 +172,11 @@ fn host(state_file: &Path, installed: Option<&str>) -> (AgentHost, Fakes, Asked)
         database: Box::new(fakes.clone()),
         packages: Box::new(fakes.clone()),
         api: Box::new(UpdaterApi::new(&base, Box::new(Https::default()))),
+        provision: Box::new(agent::modules::provisioner::Provisioner::new(
+            &agent::paths::Paths::under(state_file.parent().unwrap()),
+            None,
+            "unused",
+        )),
         clock: Box::new(fakes.clone()),
     };
     (AgentHost::new(adapters, state_file.into()), fakes, asked)

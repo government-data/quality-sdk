@@ -129,6 +129,10 @@ pub trait Host {
     fn put_package(&self, module: &str, package: &Path, remove: &[String]) -> Result<(), String>;
     /// Put `version` with every one of its modules' images.
     fn put_version(&self, version: &str, modules: &Modules) -> Result<(), String>;
+    /// What `module`'s new package asks for (its secret files, database
+    /// and OIDC clients, decision 0009) in place before it starts; running
+    /// it twice changes nothing.
+    fn provision(&self, module: &str) -> Result<(), String>;
     fn start(&self) -> Result<(), String>;
     /// That it answers; with `version`, that it is that one.
     fn healthy(&self, version: Option<&str>) -> Result<(), String>;
