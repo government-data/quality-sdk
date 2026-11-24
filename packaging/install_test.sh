@@ -238,6 +238,12 @@ check "PostgreSQL's password file is its user's (uid 70)" \
   grep -q "owner 70: $MOD/secrets/postgres_superuser_password" "$WORK/out"
 check "the database URL is the API's user's (uid 65532)" \
   grep -q "owner 65532: $MOD/secrets/database_url" "$WORK/out"
+check "Dolt's two passwords are the API's user's (uid 65532), 43 base64url characters" bash -c \
+  "grep -q 'owner 65532: .*dolt-root-password .*dolt-app-password' '$WORK/out' &&
+   grep -Eqx '[A-Za-z0-9_-]{43}' '$MOD/secrets/dolt-root-password' &&
+   grep -Eqx '[A-Za-z0-9_-]{43}' '$MOD/secrets/dolt-app-password' &&
+   test $(mode "$MOD/secrets/dolt-app-password") = 400 &&
+   ! cmp -s '$MOD/secrets/dolt-root-password' '$MOD/secrets/dolt-app-password'"
 check "the secrets are 0400 in a folder the containers can read (0755)" bash -c \
   "test $(mode "$MOD/secrets/database_url") = 400 && test $(mode "$MOD/secrets") = 755 && test $(mode "$MOD") = 755"
 check "/opt/quality-data is only crossed (0711); /etc/quality-data is 0700" bash -c \
@@ -253,12 +259,14 @@ check "qd is a link to quality-data-agent beside it" \
 # --- run again: nothing more ---------------------------------------------------------
 
 cp "$MOD/.env" "$WORK/env.before"
+cp "$MOD/secrets/dolt-app-password" "$WORK/dolt.before"
 : >"$WORK/log"
 run "${ARGS[@]}"
 check "run again it finishes (0)" test "$rc" = 0
 check "run again it neither installs nor runs a command" \
   bash -c "! grep -Eq '^agent|ca-init|up --detach|run --rm' '$WORK/log'"
 check "run again the .env and its passwords are kept" cmp -s "$WORK/env.before" "$MOD/.env"
+check "run again Dolt's password is kept" cmp -s "$WORK/dolt.before" "$MOD/secrets/dolt-app-password"
 check "run again qd is still the link to quality-data-agent" \
   test "$(readlink "$ROOT/usr/local/bin/qd")" = quality-data-agent
 check "without --admin-email it says how to get the administrator's link" grep -q -- '--admin-email' "$WORK/out"
