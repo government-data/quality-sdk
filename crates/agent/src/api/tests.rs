@@ -174,6 +174,11 @@ fn the_installed_modules_are_put_whole() {
         InstalledModule::new("quality-data", "1.4.0", None),
         InstalledModule::new("docs", "0.2.0", Some(&docs)),
     ];
+    let bi = manifest(
+        "name: bi\nversion: 1.0.0\nroute: { path: /bi, service: web, port: 8080 }\n\
+         menu: { label: { en: BI, es: BI }, requires: quality:ViewResults }\n",
+    );
+    assert_eq!(InstalledModule::new("bi", "1.0.0", Some(&bi)).menu, None);
     api(&base).put_modules(&modules).unwrap();
     let sent = sent.lock().unwrap();
     assert_eq!(

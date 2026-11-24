@@ -102,7 +102,12 @@ impl Manifest {
         validate_drain(self.drain.as_ref())?;
         crate::route::validate(self.route.as_ref(), self.auth, self.menu.as_ref())?;
         crate::secrets::validate_secrets(&self.secrets)?;
-        crate::secrets::validate_created(&self.name, &self.data.databases)
+        crate::secrets::validate_created(&self.name, &self.data.databases)?;
+        let declared = crate::permissions::validate(&self.name, self.permissions.as_ref())?;
+        if let Some(action) = self.menu.as_ref().and_then(|m| m.requires.as_deref()) {
+            declared.check("menu.requires", action)?;
+        }
+        Ok(())
     }
 
     fn validate_capabilities(&self) -> Result<(), ManifestError> {

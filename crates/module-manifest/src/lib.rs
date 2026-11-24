@@ -10,8 +10,9 @@
 //! requirements, and [`lost_on_removal`] which modules would lose a
 //! required capability if one were removed.
 //!
-//! What a module gets at `module add` (decision 0009): its secret files
-//! and the databases the agent creates.
+//! What a module gets at `module add` (decision 0009): its secret files,
+//! the databases the agent creates, a menu entry that depends on an
+//! action, and its own actions and managed policies.
 //!
 //! Pure: it reads text and answers values. Reading `module.yaml`, backing
 //! up and checking health belong to the agent.
@@ -19,6 +20,7 @@
 mod checks;
 mod error;
 mod model;
+mod permissions;
 mod route;
 mod secrets;
 mod validate;
@@ -30,6 +32,7 @@ pub use model::{
     ProviderHold, Provides, RequiredCapability, Requires, Volume, CHECK_TIMEOUT_SECS,
     MAX_CHECK_TIMEOUT_SECS,
 };
+pub use permissions::{Action, Permissions, Policy};
 pub use route::{Auth, InLanguages, Menu, Route, RESERVED_ROUTE_SEGMENTS};
 pub use secrets::{
     database_prefix, GeneratedSecret, Secrets, DATABASE_PASSWORD, ISSUED_SECRETS,
