@@ -6,6 +6,7 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 
 use super::order::apply_order;
+use super::replica::{not_in_sync, refuse};
 use super::{
     enter, finish, is_newer, outcome, CloudError, Host, Offer, Who, CHECK_EVERY, MAINTENANCE,
 };
@@ -49,6 +50,13 @@ pub(super) fn waiting(
     };
 
     if !should_start(host, s, who, &orders, &target, request.is_some(), now) {
+        return Ok(false);
+    }
+    if let Some(why) = not_in_sync(host) {
+        if let Some(id) = request {
+            s.handled_request = Some(id);
+        }
+        refuse(host, s, target, &why, false)?;
         return Ok(false);
     }
     let reason = format!("updating to {}", target.version);

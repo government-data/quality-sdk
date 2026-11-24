@@ -12,7 +12,9 @@
 //! 2. **Wait for the moment**: an "Update now", or the automatic window.
 //! 3. **Drain**: maintenance; wait until nothing is running. If it does not
 //!    empty in time it is postponed without touching anything.
-//! 4. **Back up** and check the backup. If it fails, nothing is touched.
+//! 4. **Back up** and check the backup. If it fails, nothing is touched. A
+//!    volume backed up by a replica is not copied: the update goes ahead
+//!    only if that replica is in sync, asked here and before maintenance.
 //! 5. **Apply**: keep the current package, put the new one, bring it up.
 //! 6. **Verify** that the expected version answers.
 //! 7. If not: **go back** to the previous package on the same database (the
@@ -32,12 +34,14 @@ mod drain;
 mod order;
 mod prepare;
 mod recover;
+mod replica;
 
 use apply::{apply, verify};
 use drain::{back_up, drain};
 pub use order::apply_order;
 use prepare::waiting;
 use recover::{restore, roll_back};
+pub use replica::{Replica, ReplicaState};
 
 /// What the cloud offers this installation: a platform version and its
 /// modules (decision 0003).
@@ -102,6 +106,10 @@ pub trait Host {
     /// Tell the cloud how it ended (to brake a version that fails in several
     /// installations). If it does not answer, it does not matter.
     fn report_to_cloud(&self, outcome: &Outcome);
+    /// Tell the cloud an update was refused because a replica that backs
+    /// up a critical volume is not in sync (`replica_refused`). If it does
+    /// not answer, it does not matter.
+    fn report_replica_refused(&self, outcome: &Outcome);
 
     fn free_space(&self) -> Result<(), String>;
     /// Download one module's package of `offer` and check its SHA-256;
@@ -119,7 +127,11 @@ pub trait Host {
     fn drain(&self, horizon: Duration) -> Result<Drain, String>;
 
     fn installed(&self) -> Result<Installed, String>;
-    /// Back up the database and the keys, and check the backup.
+    /// Every installed module's critical volume whose backup is a replica,
+    /// with what the core says of it (none: nothing is backed up that way).
+    fn replicas(&self) -> Result<Vec<Replica>, String>;
+    /// Back up the database and the keys, and check the backup. A volume
+    /// whose backup is a replica is not copied.
     fn back_up(&self) -> Result<PathBuf, String>;
     /// Copy the files of `module`'s installed package.
     fn save_package(&self, module: &str, version: &str) -> Result<(PathBuf, Vec<String>), String>;
