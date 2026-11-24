@@ -273,6 +273,12 @@ fn what_cannot_be_added_or_removed_is_refused_before_anything_changes() {
     assert!(add(&f, "lake-rustfs")
         .unwrap_err()
         .contains("cannot get yet"));
+    let actions = "permissions: { actions: [{ name: 'lake-rustfs:Use', \
+                   description: { en: Use, es: Usar } }] }\n";
+    let f = Fake::new(&[("quality-data", "")]).with_index("lake-rustfs", actions);
+    assert!(add(&f, "lake-rustfs")
+        .unwrap_err()
+        .contains("cannot have yet"));
     let mut f = Fake::new(&[("quality-data", "")]);
     f.update_running = true;
     assert!(add(&f, "docs").unwrap_err().contains("update is under way"));

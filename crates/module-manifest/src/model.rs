@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use serde::de::IgnoredAny;
 use serde::Deserialize;
 
+use crate::permissions::Permissions;
 use crate::route::{Auth, Menu, Route};
 use crate::secrets::Secrets;
 use crate::ManifestError;
@@ -47,13 +48,14 @@ pub struct Manifest {
     /// The secret files the agent generates for it (decision 0009).
     #[serde(default)]
     pub secrets: Secrets,
+    /// Its own actions and managed policies (decision 0009).
+    #[serde(default)]
+    pub permissions: Option<Permissions>,
     // Sections later steps of decision 0002 define: accepted, not read yet.
     #[serde(default)]
     images: Option<IgnoredAny>,
     #[serde(default)]
     consumes: Option<IgnoredAny>,
-    #[serde(default)]
-    permissions: Option<IgnoredAny>,
     #[serde(default)]
     config: Option<IgnoredAny>,
     #[serde(default)]

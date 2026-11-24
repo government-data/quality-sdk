@@ -117,8 +117,12 @@ impl InstalledModule {
     /// `name` at `version`, with what its manifest declares.
     pub fn new(name: &str, version: &str, manifest: Option<&Manifest>) -> Self {
         let route = manifest.and_then(|m| m.route.as_ref());
+        // A menu shown only to who holds an action is not sent until the
+        // core is known to check it (decision 0009, point 6): hidden from
+        // everyone, never shown to everyone.
         let menu = manifest
             .and_then(|m| m.menu.as_ref())
+            .filter(|menu| menu.requires.is_none())
             .zip(route)
             .map(|(menu, route)| {
                 let path = menu.paths(route);

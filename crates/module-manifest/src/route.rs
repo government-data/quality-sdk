@@ -13,7 +13,7 @@
 //!   path: { en: /docs/, es: /docs/es/ }      # default: route.path + "/"
 //! ```
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::ManifestError;
 
@@ -57,7 +57,7 @@ pub enum Auth {
 }
 
 /// A text in each language the web speaks.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct InLanguages {
     pub en: String,
@@ -72,6 +72,10 @@ pub struct Menu {
     /// The page it opens, under the route; `route.path` + `/` without it.
     #[serde(default)]
     pub path: Option<InLanguages>,
+    /// The action a person must hold to see it (decision 0009): it hides
+    /// the link only, it is not access control.
+    #[serde(default)]
+    pub requires: Option<String>,
 }
 
 impl Menu {
