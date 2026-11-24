@@ -1,0 +1,51 @@
+# A copy of lake-rustfs's module.yaml at commit 761a939 (a test fixture: it must parse unchanged).
+# The lake-rustfs module's manifest for quality-sdk (decision 0002): the lake
+# on RustFS. Its version is the module's one version source: a release tag is
+# `v` + this version, and tools/package.sh refuses any other.
+name: lake-rustfs
+version: 0.1.0
+
+# The capability `lake` and the protocols it promises. The properties are
+# what a consumer reads from the core, never assumes (core decision 0078,
+# point 4, as its step 1 found them on RustFS 1.0.5).
+provides:
+  capabilities:
+    - name: lake
+      version: 1
+      protocols: [s3, iceberg-rest, sts, mtls-gate, lake-admin/1]
+      properties:
+        credential-vending: unsupported
+        drop-purge: unsupported
+        catalog-prefix: from-config
+        region: us-east-1
+        url-style: path
+        catalog-sigv4-service: s3
+        sts-min-duration-secs: 900
+        lake-admin-port: 9020
+
+# The console's route, its sign-in and its menu entry stay in the core's
+# apps.yml for now: the console runs on the lake's machines behind the gate,
+# not beside the core's Traefik.
+
+# The main lake and its replica each run RustFS and the adapter on their own
+# machines, with their own keys (accepted, not read yet).
+topology:
+  roles:
+    - name: lake
+      strategy: simultaneous
+    - name: lake-replica
+      strategy: simultaneous
+
+health:
+  services: [rustfs, admin]
+
+# RustFS's data is the module's: kept on remove, deleted only by purge. It is
+# critical, and its backup is the replica in sync: an update of this module
+# goes ahead only when the replica is in sync and every node is healthy, and
+# with no replica it does not go ahead. The adapter keeps no data.
+data:
+  volumes:
+    - name: rustfs-data
+      service: rustfs
+      path: /data
+      critical: true

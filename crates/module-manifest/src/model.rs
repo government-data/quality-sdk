@@ -6,6 +6,7 @@ use serde::de::IgnoredAny;
 use serde::Deserialize;
 
 use crate::route::{Auth, Menu, Route};
+use crate::secrets::Secrets;
 use crate::ManifestError;
 
 /// How long a health check may take when the manifest does not say.
@@ -43,6 +44,9 @@ pub struct Manifest {
     /// Its entry in the core's apps menu (needs `route`).
     #[serde(default)]
     pub menu: Option<Menu>,
+    /// The secret files the agent generates for it (decision 0009).
+    #[serde(default)]
+    pub secrets: Secrets,
     // Sections later steps of decision 0002 define: accepted, not read yet.
     #[serde(default)]
     images: Option<IgnoredAny>,
@@ -184,6 +188,9 @@ pub struct Data {
 #[serde(deny_unknown_fields)]
 pub struct Database {
     pub name: String,
+    /// The agent creates it, with the module's role (decision 0009).
+    #[serde(default)]
+    pub create: bool,
     #[serde(default = "critical")]
     pub critical: bool,
 }
@@ -222,6 +229,21 @@ impl Manifest {
             serde_saphyr::from_str(text).map_err(|e| ManifestError::Malformed(e.to_string()))?;
         manifest.validate()?;
         Ok(manifest)
+    }
+}
+
+impl Manifest {
+    /// The databases the agent creates for the module.
+    pub fn created_databases(&self) -> impl Iterator<Item = &Database> {
+        self.data.databases.iter().filter(|d| d.create)
+    }
+
+    /// The module's PostgreSQL role, when it has a database the agent
+    /// creates: its name with `-` as `_`.
+    pub fn database_role(&self) -> Option<String> {
+        self.created_databases()
+            .next()
+            .map(|_| crate::secrets::database_prefix(&self.name))
     }
 }
 

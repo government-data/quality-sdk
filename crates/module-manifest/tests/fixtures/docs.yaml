@@ -1,0 +1,35 @@
+# A copy of docs's module.yaml at commit 8bbafad (a test fixture: it must parse unchanged).
+# The docs module's manifest for quality-sdk: the user guide, a static site
+# with no data of its own and nothing it requires.
+name: docs
+version: 0.2.0
+
+# Served at /docs on the installation's web entry point (quality-sdk
+# decision 0002): the agent writes Traefik's route to the `web` service,
+# reached on data-quality-edge as docs-web (compose.yml).
+route:
+  path: /docs
+  service: web
+  port: 8080
+
+# A static site that does not sign in itself: the core checks the session
+# before Traefik passes each request (a page goes to sign in and back).
+auth: forward
+
+# Its entry in the core's apps menu, in each language the web speaks.
+menu:
+  label:
+    en: User guide
+    es: Guía de usuario
+  path:
+    en: /docs/
+    es: /docs/es/
+
+# Besides its container's healthcheck (the image's HEALTHCHECK), the web
+# service must have a running container and answer its health page.
+health:
+  services: [web]
+  checks:
+    - service: web
+      command: [wget, -q, -O, /dev/null, "http://127.0.0.1:8080/docs/healthz"]
+      timeout_secs: 10

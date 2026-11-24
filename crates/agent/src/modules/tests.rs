@@ -268,6 +268,11 @@ fn what_cannot_be_added_or_removed_is_refused_before_anything_changes() {
     let oidc = "route: { path: /lake, service: console, port: 9001 }\nauth: oidc\n";
     let f = Fake::new(&[("quality-data", "")]).with_index("lake-rustfs", oidc);
     assert!(add(&f, "lake-rustfs").unwrap_err().contains("OIDC"));
+    let secrets = "secrets: { generate: [{ name: key }] }\n";
+    let f = Fake::new(&[("quality-data", "")]).with_index("lake-rustfs", secrets);
+    assert!(add(&f, "lake-rustfs")
+        .unwrap_err()
+        .contains("cannot get yet"));
     let mut f = Fake::new(&[("quality-data", "")]);
     f.update_running = true;
     assert!(add(&f, "docs").unwrap_err().contains("update is under way"));

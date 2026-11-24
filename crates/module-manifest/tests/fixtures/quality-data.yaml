@@ -1,0 +1,49 @@
+# A copy of quality-data's module.yaml at commit c4e3115 (a test fixture: it must parse unchanged).
+# The core's manifest for quality-sdk (decision 0080, point 1): the module
+# `quality-data`. tools/package.sh copies it into the package with
+# `version` from version.txt; the 0.0.0 here is never published.
+name: quality-data
+version: 0.0.0
+
+# Each must have a running container, besides their Compose healthchecks.
+# No `checks` until the API's image has a command that answers.
+health:
+  services: [traefik, postgres, api, node, web]
+
+# What a backup before every update covers (the critical pieces).
+data:
+  databases:
+    # POSTGRES_DB in the .env (infra/package/env.example).
+    - name: quality_data
+      critical: true
+  volumes:
+    # The key of the Settings secrets (LDAP, mail, OAuth).
+    - name: settings-key
+      service: api
+      path: /var/lib/quality-data/settings
+      critical: true
+    - name: letsencrypt
+      service: traefik
+      path: /letsencrypt
+      critical: false
+    - name: metrics
+      service: api
+      path: /run/qd-metrics
+      critical: false
+  # Under /opt/quality-data/quality-data/: the installation's .env (its
+  # passwords, names and image digests; restored with the database it
+  # matches), its CA and the secrets (infra/package/compose.yml).
+  keys:
+    - path: .env
+      critical: true
+    - path: ca/ca.crt
+      critical: true
+    - path: ca/ca.key
+      critical: true
+    - path: secrets/database_url
+      critical: true
+    - path: secrets/postgres_superuser_password
+      critical: true
+
+# No `drain`: the core counts its own work (it is not one of the modules it
+# asks).
