@@ -143,6 +143,10 @@ impl ModuleHost for Adapters {
     fn provision(&self) -> &dyn super::Provision {
         &self.provisioner
     }
+    fn report(&self, kind: &str, platform: &str, module: &str, version: &str, detail: &str) {
+        self.cloud
+            .report_module(kind, platform, (module, version), detail);
+    }
 }
 
 #[cfg(test)]

@@ -27,7 +27,27 @@ pub struct Report<'a> {
     pub at: DateTime<Utc>,
     /// What went wrong, in the engine's words.
     pub detail: &'a str,
+    /// The module a module operation acted on (decision 0009); absent for
+    /// an update or an install.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub module: Option<ReportModule<'a>>,
 }
+
+/// A module and its version, in a report of a module operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReportModule<'a> {
+    pub name: &'a str,
+    pub version: &'a str,
+}
+
+/// The kinds of a module operation's report (decision 0009, point 9).
+pub const MODULE_KINDS: &[&str] = &[
+    "module_added",
+    "module_add_failed",
+    "module_removed",
+    "module_purged",
+    "module_rotated",
+];
 
 /// The name an outcome has in a report (the state file's).
 fn kind_name(kind: OutcomeKind) -> &'static str {
@@ -52,6 +72,7 @@ impl<'a> Report<'a> {
             from: &outcome.from,
             at: outcome.at,
             detail: &outcome.detail,
+            module: None,
         }
     }
 
@@ -118,5 +139,48 @@ mod tests {
                 "detail": "the new version did not answer",
             })
         );
+    }
+
+    #[test]
+    fn a_module_operation_carries_the_module_and_nothing_else() {
+        let aws = FakeAws::default();
+        aws.answer(
+            "PUT /reports/inst-0001/20261124T120000Z-module_added-1.4.0.json",
+            200,
+            b"",
+        );
+        let report = Report {
+            format: FORMAT,
+            installation: "inst-0001",
+            agent: env!("CARGO_PKG_VERSION"),
+            kind: "module_added",
+            version: "1.4.0",
+            from: "1.4.0",
+            at: Utc.with_ymd_and_hms(2026, 11, 24, 12, 0, 0).unwrap(),
+            detail: "",
+            module: Some(ReportModule {
+                name: "bi",
+                version: "1.0.0",
+            }),
+        };
+        report.write(&bucket(&aws)).unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&aws.sent.borrow()[0].body).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "format": 1,
+                "installation": "inst-0001",
+                "agent": env!("CARGO_PKG_VERSION"),
+                "kind": "module_added",
+                "version": "1.4.0",
+                "from": "1.4.0",
+                "at": "2026-11-24T12:00:00Z",
+                "detail": "",
+                "module": {"name": "bi", "version": "1.0.0"},
+            })
+        );
+        for kind in MODULE_KINDS {
+            assert!(kind.starts_with("module_"));
+        }
     }
 }

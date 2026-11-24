@@ -188,6 +188,13 @@ impl ModuleHost for Fake {
     fn provision(&self) -> &dyn Provision {
         &self.provision
     }
+    fn report(&self, kind: &str, platform: &str, module: &str, version: &str, detail: &str) {
+        self.note(
+            format!("report {kind} {platform} {module} {version} {detail}")
+                .trim_end()
+                .to_string(),
+        );
+    }
 }
 
 #[test]
@@ -206,6 +213,7 @@ fn docs_is_added_from_the_installed_version_and_served() {
             "routes",
             "healthy docs",
             "tell",
+            "report module_added 1.4.0 docs 1.0.0",
         ]
     );
 }
@@ -221,6 +229,7 @@ fn docs_is_removed_and_its_route_goes() {
             "put_modules 1.4.0 quality-data order quality-data",
             "routes",
             "tell",
+            "report module_removed 1.4.0 docs 1.0.0",
         ]
     );
 }

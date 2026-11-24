@@ -56,6 +56,10 @@ fn an_installed_module_is_removed_backed_up_then_deleted_in_order() {
         ]
     );
     assert!(f.provision.progress.borrow().is_empty());
+    assert_eq!(
+        f.calls().last().unwrap(),
+        "report module_purged 1.4.0 bi 1.0.0"
+    );
 }
 
 #[test]

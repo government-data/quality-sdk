@@ -58,7 +58,11 @@ fn the_issued_secrets_are_rotated_in_five_steps() {
     );
     let calls = f.calls();
     assert!(
-        calls.ends_with(&["up bi".to_string(), "healthy bi".into()]),
+        calls.ends_with(&[
+            "up bi".to_string(),
+            "healthy bi".into(),
+            "report module_rotated 1.4.0 bi 1.0.0".into()
+        ]),
         "{calls:?}"
     );
     assert!(f.provision.progress.borrow().is_empty());

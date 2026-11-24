@@ -118,6 +118,8 @@ fn run_step(
         "files" => p.purge_files(module),
         _ => {
             p.audit(&provision::event("ModulePurged", module, version, None));
+            let platform = host.installed()?.0.version;
+            host.report("module_purged", &platform, module, version, "");
             Ok(())
         }
     }

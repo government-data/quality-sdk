@@ -16,7 +16,7 @@ use super::http::Https;
 use super::images::{pull_all, Docker, ImagePuller};
 use super::index::{first, offer, IndexReader};
 use super::packages::download;
-use super::reports::{Report, FORMAT};
+use super::reports::{Report, ReportModule, FORMAT, MODULE_KINDS};
 use crate::config::Config;
 use crate::host::Cloud;
 use crate::paths::Paths;
@@ -107,10 +107,37 @@ impl AwsCloud {
             from: "",
             at: chrono::Utc::now(),
             detail: failed.unwrap_or(""),
+            module: None,
         };
         match report.write(&self.bucket) {
             Ok(key) => tracing::info!("reported {key}"),
             Err(err) => tracing::warn!("could not report the install: {err}"),
+        }
+    }
+
+    /// A module operation's report (decision 0009): `kind` one of
+    /// [`MODULE_KINDS`], `platform` the installed platform version (as
+    /// `version` and `from`), `detail` the agent's error text; if it cannot
+    /// be written, it does not matter.
+    pub fn report_module(&self, kind: &str, platform: &str, module: (&str, &str), detail: &str) {
+        debug_assert!(MODULE_KINDS.contains(&kind));
+        let report = Report {
+            format: FORMAT,
+            installation: &self.installation,
+            agent: env!("CARGO_PKG_VERSION"),
+            kind,
+            version: platform,
+            from: platform,
+            at: chrono::Utc::now(),
+            detail,
+            module: Some(ReportModule {
+                name: module.0,
+                version: module.1,
+            }),
+        };
+        match report.write(&self.bucket) {
+            Ok(key) => tracing::info!("reported {key}"),
+            Err(err) => tracing::warn!("could not report the module operation: {err}"),
         }
     }
 }

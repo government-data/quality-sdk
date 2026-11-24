@@ -74,7 +74,8 @@ fn add_provides_secrets_database_and_clients_before_the_module_starts() {
         "up bi".to_string(),
         "routes".into(),
         "healthy bi".into(),
-        "tell".into()
+        "tell".into(),
+        "report module_added 1.4.0 bi 1.0.0".into()
     ]));
     assert_eq!(p.event_names(), ["ModuleAdded succeeded"]);
     assert!(p.progress.borrow().is_empty());
@@ -106,7 +107,13 @@ fn a_crash_before_each_step_and_add_again_converges_with_the_same_secrets() {
         let keys: Vec<_> = f.provision.secrets.borrow().keys().cloned().collect();
         assert_eq!(keys, expected.keys().cloned().collect::<Vec<_>>(), "{step}");
         assert!(f.provision.progress.borrow().is_empty(), "{step}");
-        assert!(f.calls().ends_with(&["tell".to_string()]), "{step}");
+        assert!(
+            f.calls().ends_with(&[
+                "tell".to_string(),
+                "report module_added 1.4.0 bi 1.0.0".into()
+            ]),
+            "{step}"
+        );
     }
 }
 
@@ -116,6 +123,12 @@ fn a_core_that_does_not_answer_stops_add_at_the_clients() {
     *f.provision.core_down.borrow_mut() = true;
     let err = add(&f, "bi").unwrap_err();
     assert!(err.contains("stopped at clients"), "{err}");
+    let report = f.calls().last().unwrap().clone();
+    assert!(
+        report.starts_with("report module_add_failed 1.4.0 bi 1.0.0 "),
+        "{report}"
+    );
+    assert!(report.contains("does not answer"), "{report}");
     assert!(!f.calls().iter().any(|c| c.starts_with("up")));
     assert_eq!(f.provision.progress.borrow()["bi"].step, "clients");
     *f.provision.core_down.borrow_mut() = false;
