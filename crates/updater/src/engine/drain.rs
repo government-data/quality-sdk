@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 
+use super::replica::{not_in_sync, refuse};
 use super::{enter, finish, leave_maintenance, outcome, Drain, Host, Who, DRAIN_POLL};
 use crate::state::{OutcomeKind, Phase, Previous, SavedPackage, State, Target};
 
@@ -90,6 +91,10 @@ pub(super) fn back_up(
     target: Target,
     _request: Option<String>,
 ) -> Result<bool, String> {
+    if let Some(why) = not_in_sync(host) {
+        refuse(host, s, target, &why, true)?;
+        return Ok(false);
+    }
     let prepare = || -> Result<(PathBuf, Previous), String> {
         let backup = host.back_up()?;
         let installed = host.installed()?;

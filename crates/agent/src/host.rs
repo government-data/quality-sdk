@@ -26,7 +26,7 @@ use std::collections::BTreeSet;
 
 use module_manifest::{Manifest, Permissions};
 use serde::Serialize;
-use updater::engine::{CloudError, Drain, Host, Installed, Offer, OfferedPackage};
+use updater::engine::{CloudError, Drain, Host, Installed, Offer, OfferedPackage, Replica};
 use updater::policy::Orders;
 use updater::state::{Modules, Outcome, State};
 
@@ -345,6 +345,16 @@ impl Host for AgentHost {
     }
     fn installed(&self) -> Result<Installed, String> {
         self.adapters.compose.installed()
+    }
+    /// Until the agent reads `backup: replica` (decision 0002, step 9 of
+    /// the amendment to steps 6 and 16, its next pull request), every
+    /// critical volume is copied into the backup, so none is backed up by
+    /// a replica.
+    fn replicas(&self) -> Result<Vec<Replica>, String> {
+        Ok(Vec::new())
+    }
+    fn report_replica_refused(&self, outcome: &Outcome) {
+        tracing::warn!("{}", outcome.detail);
     }
     fn back_up(&self) -> Result<PathBuf, String> {
         self.adapters.database.back_up()

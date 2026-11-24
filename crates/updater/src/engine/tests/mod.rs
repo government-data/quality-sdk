@@ -2,7 +2,7 @@
 //! is asked and fails where told.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use chrono::TimeZone;
 
@@ -13,6 +13,7 @@ use crate::state::Module;
 mod packages;
 mod preparing;
 mod recovering;
+mod replicas;
 mod updating;
 
 #[derive(Default)]
@@ -35,6 +36,9 @@ struct Fake {
     put: RefCell<Vec<(String, Modules)>>,
     saved: RefCell<Vec<State>>,
     maintenance: Cell<bool>,
+    /// What `replicas` answers, one each time it is asked; when none is
+    /// left, no volume is backed up by a replica.
+    replicas: RefCell<VecDeque<Result<Vec<Replica>, String>>>,
 }
 
 impl Fake {
@@ -183,6 +187,16 @@ impl Host for Fake {
             version: "1.2.0".into(),
             modules: modules("1.2.0"),
         })
+    }
+    fn report_replica_refused(&self, o: &Outcome) {
+        self.note(format!("report_replica_refused:{}", o.detail));
+    }
+    fn replicas(&self) -> Result<Vec<Replica>, String> {
+        self.note("replicas");
+        self.replicas
+            .borrow_mut()
+            .pop_front()
+            .unwrap_or_else(|| Ok(Vec::new()))
     }
     fn back_up(&self) -> Result<PathBuf, String> {
         self.note("back_up");
