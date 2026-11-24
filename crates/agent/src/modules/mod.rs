@@ -23,6 +23,10 @@ use updater::engine::{Installed, Offer, OfferedPackage};
 use updater::state::Modules;
 
 pub mod adapters;
+pub mod provision;
+pub mod provisioner;
+
+pub use provision::{Progress, Provision};
 
 /// The module the core is: never removed.
 const CORE: &str = "quality-data";
