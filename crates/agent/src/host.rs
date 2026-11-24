@@ -9,6 +9,7 @@
 //! | [`Database`] (PostgreSQL) | `back_up`, `restore_database` |
 //! | [`Packages`] (package files) | `free_space`, `save_package`, `manifest`, `put_package`, `install_commands` |
 //! | [`Api`] (quality-data's `updater/v1`) | telling `save`, `orders`, `maintenance`, `drain`, the version of `healthy` |
+//! | [`crate::modules::Provision`] (secrets, PostgreSQL, `updater/v1`) | `provision` (decision 0009) |
 //!
 //! The host also tells quality-data which modules are installed
 //! ([`AgentHost::tell_modules`]) after every version it starts and when the
@@ -218,6 +219,8 @@ pub struct Adapters {
     pub database: Box<dyn Database>,
     pub packages: Box<dyn Packages>,
     pub api: Box<dyn Api>,
+    /// What a module's package asks for (decision 0009).
+    pub provision: Box<dyn crate::modules::Provision>,
     pub clock: Box<dyn Clock>,
 }
 
@@ -363,6 +366,33 @@ impl Host for AgentHost {
         let order = std::mem::take(&mut *self.put_order.borrow_mut());
         self.modules_untold.set(true);
         self.adapters.compose.put_version(version, modules, &order)
+    }
+    /// Steps 4 to 6 of decision 0009's point 7 for `module`'s package, as
+    /// `add` runs them, when its manifest asks for anything: its features
+    /// checked, then its secrets, database and clients (the engine's state
+    /// is the record: no progress file).
+    fn provision(&self, module: &str) -> Result<(), String> {
+        use crate::modules::provision;
+        let compose = &self.adapters.compose;
+        let Some(m) = compose.manifest(module)? else {
+            return Ok(());
+        };
+        if !provision::provides_anything(&m) && m.permissions.is_none() {
+            return Ok(());
+        }
+        let p = self.adapters.provision.as_ref();
+        if m.oidc.is_some() || m.permissions.is_some() {
+            provision::check_features(&m, &p.features()?)?;
+        }
+        if !provision::provides_anything(&m) {
+            return Ok(());
+        }
+        let mut manifests = Vec::new();
+        for name in compose.installed()?.modules.keys() {
+            manifests.extend(compose.manifest(name)?);
+        }
+        let audiences = provision::audiences(&m, &manifests)?;
+        provision::provision(p, &m, &audiences, &mut |_| Ok(()))
     }
     /// The installed version's modules started, then quality-data told
     /// which they are (after an install and after going back alike).

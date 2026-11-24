@@ -233,6 +233,11 @@ fn host(name: &str) -> (Rc<World>, AgentHost, PathBuf) {
         database: Box::new(FakeDatabase(world.clone())),
         packages: Box::new(FakePackages(world.clone())),
         api: Box::new(FakeApi(world.clone())),
+        provision: Box::new(agent::modules::provisioner::Provisioner::new(
+            &Paths::under(&root),
+            None,
+            "unused",
+        )),
         clock: Box::new(FakeClock(world.clone())),
     };
     (world, AgentHost::new(adapters, state_file.clone()), root)

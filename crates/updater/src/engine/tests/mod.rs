@@ -224,6 +224,13 @@ impl Host for Fake {
         *self.up.borrow_mut() = version.into();
         Ok(())
     }
+    fn provision(&self, module: &str) -> Result<(), String> {
+        self.note(format!("provision:{module}"));
+        if self.fails_at(&format!("provision:{module}")) {
+            return Err("quality-data does not answer".into());
+        }
+        Ok(())
+    }
     fn start(&self) -> Result<(), String> {
         let v = self.up.borrow().clone();
         self.note(format!("start:{v}"));

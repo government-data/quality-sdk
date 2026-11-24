@@ -251,3 +251,40 @@ fn a_module_with_secrets_only_needs_no_core_feature() {
         )]
     );
 }
+
+#[test]
+fn a_new_version_gets_its_new_needs_and_twice_is_once() {
+    let f = fake();
+    add(&f, "bi").unwrap();
+    let before = f.provision.secrets.borrow().clone();
+    // The next version: a new redirect path, a new secret, a new database.
+    let next = super::tests::manifest(
+        "bi",
+        &BI.replace("[/bi/cb]", "[/bi/cb, /bi/cb2]")
+            .replace(
+                "[{ name: secret-key }]",
+                "[{ name: secret-key }, { name: cache-key }]",
+            )
+            .replace(
+                "[{ name: bi, create: true }]",
+                "[{ name: bi, create: true }, { name: bi_cache, create: true }]",
+            ),
+    )
+    .unwrap();
+    let p = &f.provision;
+    p.notes.borrow_mut().clear();
+    for _ in 0..2 {
+        provision::provision(p, &next, &["trino".into()], &mut |_| Ok(())).unwrap();
+    }
+    let secrets = p.secrets.borrow().clone();
+    for (k, v) in &before {
+        assert_eq!(&secrets[k], v, "kept: {k:?}");
+    }
+    assert_eq!(secrets.len(), before.len() + 1);
+    assert!(p.secret_of("bi", "cache-key").is_some());
+    let notes = p.notes();
+    assert_eq!(notes.len(), 4);
+    assert_eq!(notes[0], notes[2], "twice is once");
+    assert!(notes[0].ends_with(" bi,bi_cache"), "{}", notes[0]);
+    assert_eq!(notes[1], notes[3]);
+}

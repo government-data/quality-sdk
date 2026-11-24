@@ -25,6 +25,12 @@ pub(super) fn apply(
             host.put_package(&package.module, &package.path, &remove)?;
         }
         host.put_version(&target.version, &target.modules)?;
+        // Each new package's needs before anything starts: a failure goes
+        // back as a failed start does.
+        for package in &target.packages {
+            host.provision(&package.module)
+                .map_err(|e| format!("{}: {e}", package.module))?;
+        }
         host.start()
     };
     match apply() {
