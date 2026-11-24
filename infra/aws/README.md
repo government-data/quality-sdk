@@ -46,6 +46,18 @@ gh variable set AWS_REGION --repo quality-data/core --body us-east-1
 Likewise for `quality-data/docs` and `quality-data/lake-rustfs` with the
 output's `docs` and `lake-rustfs` keys.
 
+## Renaming the GitHub organisation
+
+A role with `ids` trusts GitHub's immutable subject under the name in its
+`repo` and under every name in `github_owner_names` (by default
+`quality-data` and `government-data`), and the ids-only subject
+`repository_owner_id:<owner id>:repository_id:<repo id>:ref:refs/tags/v*`
+that a repository sends once its subject template is set to
+`["repository_owner_id", "repository_id", "ref"]`. The ids say which
+organisation and repository it is, so the trust works before and after the
+rename. Apply this before renaming; drop the old name from the trust only
+after a release has passed under the new one.
+
 ## Verify Roles Anywhere (a person, after applying)
 
 ```bash
