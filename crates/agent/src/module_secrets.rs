@@ -48,7 +48,19 @@ impl std::fmt::Debug for Secret {
     }
 }
 
+/// Into a request body only.
+impl serde::Serialize for Secret {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.0)
+    }
+}
+
 impl Secret {
+    /// A value read or made elsewhere (a test's invented one).
+    pub fn new(value: String) -> Self {
+        Self(value)
+    }
+
     /// The value, for a request body or a verifier only.
     pub fn expose(&self) -> &str {
         &self.0

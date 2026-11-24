@@ -75,6 +75,26 @@ pub fn renew(renewer: &Renewer, now: chrono::DateTime<chrono::Utc>) {
     }
 }
 
+/// The audit events the core has not taken yet, sent in order (decision
+/// 0009): at start and before each round while any waits.
+pub fn flush_audit(paths: &Paths) {
+    let outbox = crate::api::modules::Outbox::new(paths);
+    if !outbox.path.exists() {
+        return;
+    }
+    let sent = Config::load(&paths.config_file()).and_then(|config| {
+        let settings = config
+            .api
+            .ok_or_else(|| format!("{}: no [api] url", paths.config_file().display()))?;
+        outbox.flush(&UpdaterApi::from_settings(&settings, paths)?)
+    });
+    match sent {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(events = n, "waiting audit events sent"),
+        Err(err) => tracing::warn!("the audit outbox could not be sent: {err}"),
+    }
+}
+
 /// The agent's lock, held while it lives: one agent per installation.
 pub fn lock(paths: &Paths) -> Result<File, String> {
     let path = paths.data_dir().join("updater/agent.lock");
