@@ -10,7 +10,8 @@
 //! requirements, and [`lost_on_removal`] which modules would lose a
 //! required capability if one were removed.
 //!
-//! What a module gets at `module add` (decision 0009): its secret files,
+//! What a module gets at `module add` (decision 0009): its OIDC clients,
+//! its secret files,
 //! the databases the agent creates, a menu entry that depends on an
 //! action, and its own actions and managed policies.
 //!
@@ -20,6 +21,7 @@
 mod checks;
 mod error;
 mod model;
+mod oidc;
 mod permissions;
 mod route;
 mod secrets;
@@ -31,6 +33,10 @@ pub use model::{
     Check, ConsumerHold, Data, Database, Drain, Health, Key, Manifest, ProvidedCapability,
     ProviderHold, Provides, RequiredCapability, Requires, Volume, CHECK_TIMEOUT_SECS,
     MAX_CHECK_TIMEOUT_SECS,
+};
+pub use oidc::{
+    Oidc, OidcMachine, OidcPeople, RoleClaim, TokenAlg, MAX_OIDC_PATHS, MAX_ROLE_VALUES,
+    RESERVED_CLAIMS,
 };
 pub use permissions::{Action, Permissions, Policy};
 pub use route::{Auth, InLanguages, Menu, Route, RESERVED_ROUTE_SEGMENTS};

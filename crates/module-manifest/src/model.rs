@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use serde::de::IgnoredAny;
 use serde::Deserialize;
 
+use crate::oidc::Oidc;
 use crate::permissions::Permissions;
 use crate::route::{Auth, Menu, Route};
 use crate::secrets::Secrets;
@@ -45,6 +46,9 @@ pub struct Manifest {
     /// Its entry in the core's apps menu (needs `route`).
     #[serde(default)]
     pub menu: Option<Menu>,
+    /// Its OIDC clients (decision 0009).
+    #[serde(default)]
+    pub oidc: Option<Oidc>,
     /// The secret files the agent generates for it (decision 0009).
     #[serde(default)]
     pub secrets: Secrets,

@@ -80,7 +80,7 @@ pub fn add(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
             manifest.name
         ));
     }
-    if manifest.auth == Some(Auth::Oidc) {
+    if manifest.auth == Some(Auth::Oidc) || manifest.oidc.is_some() {
         return Err(format!(
             "{module} signs in with OIDC, which modules cannot do yet"
         ));

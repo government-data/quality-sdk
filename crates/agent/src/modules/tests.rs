@@ -265,7 +265,8 @@ fn what_cannot_be_added_or_removed_is_refused_before_anything_changes() {
         .contains("has no module grafana"));
     assert!(remove(&f, "grafana").unwrap_err().contains("not installed"));
     assert!(remove(&f, "quality-data").unwrap_err().contains("the core"));
-    let oidc = "route: { path: /lake, service: console, port: 9001 }\nauth: oidc\n";
+    let oidc = "route: { path: /lake, service: console, port: 9001 }\nauth: oidc\n\
+                oidc: { people: { redirect_paths: [/lake/cb] } }\n";
     let f = Fake::new(&[("quality-data", "")]).with_index("lake-rustfs", oidc);
     assert!(add(&f, "lake-rustfs").unwrap_err().contains("OIDC"));
     let secrets = "secrets: { generate: [{ name: key }] }\n";

@@ -107,7 +107,19 @@ impl Manifest {
         if let Some(action) = self.menu.as_ref().and_then(|m| m.requires.as_deref()) {
             declared.check("menu.requires", action)?;
         }
-        Ok(())
+        let required: Vec<&str> = self
+            .requires
+            .capabilities
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        crate::oidc::validate(
+            self.route.as_ref(),
+            self.auth == Some(crate::route::Auth::Oidc),
+            self.oidc.as_ref(),
+            &required,
+            &declared,
+        )
     }
 
     fn validate_capabilities(&self) -> Result<(), ManifestError> {
