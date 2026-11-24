@@ -100,7 +100,9 @@ impl Manifest {
         validate_health(&self.health)?;
         validate_data(&self.data)?;
         validate_drain(self.drain.as_ref())?;
-        crate::route::validate(self.route.as_ref(), self.auth, self.menu.as_ref())
+        crate::route::validate(self.route.as_ref(), self.auth, self.menu.as_ref())?;
+        crate::secrets::validate_secrets(&self.secrets)?;
+        crate::secrets::validate_created(&self.name, &self.data.databases)
     }
 
     fn validate_capabilities(&self) -> Result<(), ManifestError> {

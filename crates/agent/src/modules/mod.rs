@@ -85,6 +85,11 @@ pub fn add(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
             "{module} signs in with OIDC, which modules cannot do yet"
         ));
     }
+    if !manifest.secrets.generate.is_empty() || manifest.database_role().is_some() {
+        return Err(format!(
+            "{module} asks for secret files or a database, which modules cannot get yet"
+        ));
+    }
     let manifests = manifests(host, installed.modules.keys())?;
     let mut warnings = Vec::new();
     let mut missing = Vec::new();
