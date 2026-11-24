@@ -47,6 +47,7 @@ pub const MODULE_KINDS: &[&str] = &[
     "module_removed",
     "module_purged",
     "module_rotated",
+    "rotate_failed",
 ];
 
 /// The name an outcome has in a report (the state file's).
@@ -180,7 +181,7 @@ mod tests {
             })
         );
         for kind in MODULE_KINDS {
-            assert!(kind.starts_with("module_"));
+            assert!(kind.starts_with("module_") || *kind == "rotate_failed");
         }
     }
 }
