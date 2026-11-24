@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::model::{Data, Drain, Health, Manifest, MAX_CHECK_TIMEOUT_SECS};
+use crate::model::{Backup, Data, Drain, Health, Manifest, MAX_CHECK_TIMEOUT_SECS};
 use crate::ManifestError;
 
 fn invalid(why: String) -> ManifestError {
@@ -249,6 +249,12 @@ fn validate_data(d: &Data) -> Result<(), ManifestError> {
             return Err(invalid(format!(
                 "data.volumes {}: {:?} is not an absolute path",
                 v.name, v.path
+            )));
+        }
+        if v.backup == Backup::Replica && !v.critical {
+            return Err(invalid(format!(
+                "data.volumes {}: backup: replica needs critical: true (a piece that is not critical has no backup)",
+                v.name
             )));
         }
     }

@@ -30,7 +30,7 @@ mod validate;
 pub use checks::{lost_on_removal, unmet, Loss, Unmet, Why};
 pub use error::ManifestError;
 pub use model::{
-    Check, ConsumerHold, Data, Database, Drain, Health, Key, Manifest, ProvidedCapability,
+    Backup, Check, ConsumerHold, Data, Database, Drain, Health, Key, Manifest, ProvidedCapability,
     ProviderHold, Provides, RequiredCapability, Requires, Volume, CHECK_TIMEOUT_SECS,
     MAX_CHECK_TIMEOUT_SECS,
 };
