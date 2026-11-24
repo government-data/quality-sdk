@@ -91,12 +91,18 @@ impl AwsCloud {
         Ok(o)
     }
 
+    /// The channel the installation follows, as reports name it.
+    fn channel(&self) -> &'static str {
+        super::index::channel_name(self.index.channel)
+    }
+
     /// A report of kind `install`, or `install_failed` with where it
     /// stopped and why; if it cannot be written, it does not matter.
     pub fn report_install(&self, version: &str, failed: Option<&str>) {
         let report = Report {
             format: FORMAT,
             installation: &self.installation,
+            channel: Some(self.channel()),
             agent: env!("CARGO_PKG_VERSION"),
             kind: if failed.is_some() {
                 "install_failed"
@@ -124,6 +130,7 @@ impl AwsCloud {
         let report = Report {
             format: FORMAT,
             installation: &self.installation,
+            channel: Some(self.channel()),
             agent: env!("CARGO_PKG_VERSION"),
             kind,
             version: platform,
@@ -164,7 +171,9 @@ impl Cloud for AwsCloud {
 
     /// If it cannot be written, it does not matter: the update is done.
     fn report(&self, outcome: &Outcome) {
-        match Report::of(&self.installation, outcome).write(&self.bucket) {
+        let mut report = Report::of(&self.installation, outcome);
+        report.channel = Some(self.channel());
+        match report.write(&self.bucket) {
             Ok(key) => tracing::info!("reported {key}"),
             Err(err) => tracing::warn!("could not report the outcome: {err}"),
         }

@@ -83,6 +83,7 @@ pub fn run(paths: &Paths, installed: Option<&str>, download: bool) -> Result<(),
     let report = Report {
         format: FORMAT,
         installation: &config.installation,
+        channel: Some(crate::aws::index::channel_name(config.channel)),
         agent: env!("CARGO_PKG_VERSION"),
         kind: "check",
         version: &installed,

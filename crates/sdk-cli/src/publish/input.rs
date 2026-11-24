@@ -9,6 +9,7 @@
 //! reversible = true          # default true
 //! urgent = false             # default false
 //! notes = "What is new."
+//! min_agent = "0.2.0"        # optional: the oldest agent of the channel
 //!
 //! [rollout]
 //! percent = 10
@@ -91,6 +92,10 @@ struct Input {
     paused: bool,
     #[serde(default)]
     notes: String,
+    /// The oldest agent enrolled in the channel, as a person knows it
+    /// (decision 0009, Q11): only warns.
+    #[serde(default)]
+    min_agent: Option<Version>,
     rollout: InputRollout,
     modules: BTreeMap<String, InputModule>,
 }
@@ -133,6 +138,8 @@ pub struct LocalPackage {
 pub struct Release {
     pub version: PlatformVersion,
     pub packages: Vec<LocalPackage>,
+    /// The input's `min_agent`.
+    pub min_agent: Option<Version>,
 }
 
 /// Read the file at `path`; packages are read relative to its directory.
@@ -199,5 +206,9 @@ pub fn parse(text: &str, dir: &Path) -> Result<Release, String> {
         modules,
         notes: input.notes,
     };
-    Ok(Release { version, packages })
+    Ok(Release {
+        version,
+        packages,
+        min_agent: input.min_agent,
+    })
 }

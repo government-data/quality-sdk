@@ -152,6 +152,31 @@ impl Bucket {
         self.send(request).map(|_| ())
     }
 
+    /// `ListObjectsV2`: every key under `prefix`, page after page.
+    pub fn list(&self, prefix: &str) -> Result<Vec<String>, AwsError> {
+        let mut keys = Vec::new();
+        let mut token: Option<String> = None;
+        loop {
+            let mut url = format!(
+                "{}?list-type=2&prefix={}",
+                self.url(""),
+                uri_encode(prefix, false)
+            );
+            if let Some(t) = &token {
+                url.push_str(&format!("&continuation-token={}", uri_encode(t, false)));
+            }
+            let body = self.send(Request::new("GET", &url))?.body;
+            let text = String::from_utf8_lossy(&body);
+            keys.extend(elements(&text, "Key"));
+            let truncated =
+                elements(&text, "IsTruncated").first().map(String::as_str) == Some("true");
+            token = elements(&text, "NextContinuationToken").into_iter().next();
+            if !truncated || token.is_none() {
+                return Ok(keys);
+            }
+        }
+    }
+
     fn send(&self, request: Request) -> Result<Response, AwsError> {
         let (what, request) = self.prepare(request);
         self.account.send("s3", request, &what)
@@ -170,6 +195,27 @@ impl Bucket {
         );
         (what, request)
     }
+}
+
+/// The text of every `<tag>` element of an S3 answer, its entities read.
+fn elements(xml: &str, tag: &str) -> Vec<String> {
+    let (open, close) = (format!("<{tag}>"), format!("</{tag}>"));
+    let mut out = Vec::new();
+    let mut rest = xml;
+    while let Some(start) = rest.find(&open) {
+        let after = &rest[start + open.len()..];
+        let Some(end) = after.find(&close) else { break };
+        out.push(
+            after[..end]
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&apos;", "'")
+                .replace("&amp;", "&"),
+        );
+        rest = &after[end + close.len()..];
+    }
+    out
 }
 
 fn path_of(url: &str) -> &str {
@@ -209,6 +255,31 @@ fn error_code(body: &[u8]) -> Option<String> {
 mod tests {
     use super::*;
     use crate::fake::{bucket, FakeAws};
+
+    #[test]
+    fn a_listing_reads_every_page() {
+        let aws = FakeAws::default();
+        aws.answer(
+            "GET /?list-type=2&prefix=reports%2F&continuation-token=t%2B1",
+            200,
+            b"<ListBucketResult><IsTruncated>false</IsTruncated>\
+              <Contents><Key>reports/b/2.json</Key></Contents></ListBucketResult>",
+        );
+        aws.answer(
+            "GET /?list-type=2&prefix=reports%2F",
+            200,
+            b"<ListBucketResult><IsTruncated>true</IsTruncated>\
+              <NextContinuationToken>t+1</NextContinuationToken>\
+              <Contents><Key>reports/a/1&amp;x.json</Key></Contents>\
+              <Contents><Key>reports/a/2.json</Key></Contents></ListBucketResult>",
+        );
+        let keys = bucket(&aws).list("reports/").unwrap();
+        assert_eq!(
+            keys,
+            ["reports/a/1&x.json", "reports/a/2.json", "reports/b/2.json"]
+        );
+        assert_eq!(aws.sent.borrow().len(), 2);
+    }
 
     #[test]
     fn an_object_is_read_with_a_signed_request() {

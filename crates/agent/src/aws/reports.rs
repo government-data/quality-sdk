@@ -17,6 +17,10 @@ pub const FORMAT: u32 = 1;
 pub struct Report<'a> {
     pub format: u32,
     pub installation: &'a str,
+    /// The channel it follows (decision 0009, Q11): `qsdk publish` reads
+    /// the oldest agent per channel. Absent in older reports.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<&'a str>,
     /// The agent that wrote it.
     pub agent: &'a str,
     /// `updated`, `rolled_back`, `restored`, `critical`, …, or `check`.
@@ -67,6 +71,7 @@ impl<'a> Report<'a> {
         Self {
             format: FORMAT,
             installation,
+            channel: None,
             agent: env!("CARGO_PKG_VERSION"),
             kind: kind_name(outcome.kind),
             version: &outcome.version,
@@ -153,6 +158,7 @@ mod tests {
         let report = Report {
             format: FORMAT,
             installation: "inst-0001",
+            channel: Some("stable"),
             agent: env!("CARGO_PKG_VERSION"),
             kind: "module_added",
             version: "1.4.0",
@@ -171,6 +177,7 @@ mod tests {
             serde_json::json!({
                 "format": 1,
                 "installation": "inst-0001",
+                "channel": "stable",
                 "agent": env!("CARGO_PKG_VERSION"),
                 "kind": "module_added",
                 "version": "1.4.0",
