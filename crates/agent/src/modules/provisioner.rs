@@ -108,6 +108,15 @@ impl Provision for Provisioner {
     fn secret(&self, module: &str, name: &str) -> Result<Secret, String> {
         self.secrets.read(module, name)
     }
+    fn stage_next(&self, module: &str, name: &str, bytes: u32) -> Result<(), String> {
+        self.secrets.stage_next(module, name, bytes)
+    }
+    fn read_next(&self, module: &str, name: &str) -> Result<Option<Secret>, String> {
+        self.secrets.read_next(module, name)
+    }
+    fn promote_next(&self, module: &str, name: &str, uid: u32) -> Result<(), String> {
+        self.secrets.promote_next(module, name, uid)
+    }
     fn write_env(&self, module: &str, vars: &[(&str, String)]) -> Result<(), String> {
         self.secrets.write_env(module, vars)
     }

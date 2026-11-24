@@ -31,6 +31,11 @@ pub trait Provision {
     /// The secret file `name`, made unless it exists, owned by `uid`.
     fn ensure_secret(&self, module: &str, name: &str, bytes: u32, uid: u32) -> Result<(), String>;
     fn secret(&self, module: &str, name: &str) -> Result<Secret, String>;
+    /// `<name>.next` with a new value, unless one is there (rotation).
+    fn stage_next(&self, module: &str, name: &str, bytes: u32) -> Result<(), String>;
+    fn read_next(&self, module: &str, name: &str) -> Result<Option<Secret>, String>;
+    /// `<name>.next` renamed over `<name>`, owned by `uid`.
+    fn promote_next(&self, module: &str, name: &str, uid: u32) -> Result<(), String>;
     /// The module's `.env` with the agent's `QD_*` lines.
     fn write_env(&self, module: &str, vars: &[(&str, String)]) -> Result<(), String>;
     /// The installation's CA copied to the module's folder: its path.
@@ -174,25 +179,39 @@ fn clients(
     audiences: &[String],
 ) -> Result<Clients, String> {
     let uid = m.secrets.uid;
+    if oidc.people.is_some() {
+        p.ensure_secret(&m.name, OIDC_PEOPLE_SECRET, SECRET_BYTES, uid)?;
+    }
+    if oidc.machine.is_some() {
+        p.ensure_secret(&m.name, OIDC_MACHINE_SECRET, SECRET_BYTES, uid)?;
+    }
+    clients_with(oidc, audiences, |name| p.secret(&m.name, name))
+}
+
+/// The clients' body with each secret from `value` (by its file's name),
+/// not keeping the previous ones.
+pub fn clients_with(
+    oidc: &module_manifest::Oidc,
+    audiences: &[String],
+    value: impl Fn(&str) -> Result<Secret, String>,
+) -> Result<Clients, String> {
     let mut clients = Clients::default();
     if let Some(people) = &oidc.people {
-        p.ensure_secret(&m.name, OIDC_PEOPLE_SECRET, SECRET_BYTES, uid)?;
         clients.people = Some(PeopleClient {
             redirect_paths: people.redirect_paths.clone(),
             logout_paths: people.logout_paths.clone(),
             alg: people.alg,
             pkce: people.pkce,
             role_claim: people.role_claim.clone(),
-            secret: p.secret(&m.name, OIDC_PEOPLE_SECRET)?,
+            secret: value(OIDC_PEOPLE_SECRET)?,
             keep_previous: false,
         });
     }
     if let Some(machine) = &oidc.machine {
-        p.ensure_secret(&m.name, OIDC_MACHINE_SECRET, SECRET_BYTES, uid)?;
         clients.machine = Some(MachineClient {
             capabilities: machine.capabilities.clone(),
             audiences: audiences.to_vec(),
-            secret: p.secret(&m.name, OIDC_MACHINE_SECRET)?,
+            secret: value(OIDC_MACHINE_SECRET)?,
             keep_previous: false,
         });
     }
