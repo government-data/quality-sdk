@@ -19,6 +19,7 @@ pub struct Provisioner {
     paths: Paths,
     secrets: ModuleSecrets,
     postgres: Postgres,
+    data: crate::module_data::ModuleData,
     /// quality-data's `updater/v1` (none: the settings name no API).
     api: Option<UpdaterApi>,
     outbox: Outbox,
@@ -40,6 +41,7 @@ impl Provisioner {
             paths: paths.clone(),
             secrets: ModuleSecrets::new(paths),
             postgres: Postgres::new(paths, helper),
+            data: crate::module_data::ModuleData::new(paths, helper),
             api,
             outbox: Outbox::new(paths),
         }
@@ -145,6 +147,25 @@ impl Provision for Provisioner {
     }
     fn disable_clients(&self, module: &str) -> Result<(), String> {
         self.api()?.disable_clients(module)
+    }
+    fn audit_required(&self, event: &AuditEvent) -> Result<(), String> {
+        self.api()?.audit(event)
+    }
+    fn purge_backup(
+        &self,
+        m: &module_manifest::Manifest,
+        warnings: &mut Vec<String>,
+    ) -> Result<PathBuf, String> {
+        super::purge_files::back_up(&self.paths, &self.postgres, &self.data, m, warnings)
+    }
+    fn delete_module(&self, module: &str) -> Result<(), String> {
+        self.api()?.delete_module(module)
+    }
+    fn drop_database(&self, role: &str, databases: &[String]) -> Result<(), String> {
+        self.postgres.drop_module(role, databases)
+    }
+    fn purge_files(&self, module: &str) -> Result<(), String> {
+        super::purge_files::remove(&self.paths, &self.postgres, module)
     }
     /// Sent, or kept in the outbox (a warning, never a failure).
     fn audit(&self, event: &AuditEvent) {

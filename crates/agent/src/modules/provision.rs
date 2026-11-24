@@ -53,6 +53,17 @@ pub trait Provision {
     fn disable_clients(&self, module: &str) -> Result<(), String>;
     /// Record an event in the core's audit chain, or keep it for later.
     fn audit(&self, event: &AuditEvent);
+    /// Record an event in the core's audit chain; the core must answer.
+    fn audit_required(&self, event: &AuditEvent) -> Result<(), String>;
+    /// A purge's backup of the module, checked, `complete` written last;
+    /// its folder. A piece that is not critical and fails is a warning.
+    fn purge_backup(&self, m: &Manifest, warnings: &mut Vec<String>) -> Result<PathBuf, String>;
+    /// `DELETE /updater/v1/modules/{module}`.
+    fn delete_module(&self, module: &str) -> Result<(), String>;
+    /// The databases dropped with their sessions, then the role.
+    fn drop_database(&self, role: &str, databases: &[String]) -> Result<(), String>;
+    /// The module's Compose volumes, then its folder, removed.
+    fn purge_files(&self, module: &str) -> Result<(), String>;
 }
 
 /// A module's operation while it runs, written before each step that

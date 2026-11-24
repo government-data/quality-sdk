@@ -9,6 +9,7 @@ use super::provision::{Progress, Provision};
 use crate::api::modules::{AuditEvent, Clients, ClientsAnswer};
 use crate::host::Features;
 use crate::module_secrets::Secret;
+use module_manifest::Manifest;
 
 #[derive(Debug, Default)]
 pub(crate) struct FakeProvision {
@@ -23,6 +24,8 @@ pub(crate) struct FakeProvision {
     pub(crate) sent: RefCell<Vec<Clients>>,
     /// The core does not answer `…/clients` and `…/disable`.
     pub(crate) core_down: RefCell<bool>,
+    /// The purge's backup fails (a critical piece).
+    pub(crate) backup_fails: RefCell<bool>,
     /// Saving this step's progress fails, as a crash right before it.
     pub(crate) crash_at: RefCell<Option<String>>,
     counter: RefCell<u32>,
@@ -169,5 +172,37 @@ impl Provision for FakeProvision {
     }
     fn audit(&self, event: &AuditEvent) {
         self.events.borrow_mut().push(event.clone());
+    }
+    fn audit_required(&self, event: &AuditEvent) -> Result<(), String> {
+        if *self.core_down.borrow() {
+            return Err("quality-data does not answer".into());
+        }
+        self.audit(event);
+        Ok(())
+    }
+    fn purge_backup(&self, m: &Manifest, _w: &mut Vec<String>) -> Result<PathBuf, String> {
+        if *self.backup_fails.borrow() {
+            return Err("the volume data cannot be read".into());
+        }
+        self.note(format!("purge_backup {}", m.name));
+        Ok(PathBuf::from(format!(
+            "/var/lib/quality-data/backups/purge/{}-t",
+            m.name
+        )))
+    }
+    fn delete_module(&self, module: &str) -> Result<(), String> {
+        if *self.core_down.borrow() {
+            return Err("quality-data does not answer".into());
+        }
+        self.note(format!("delete_module {module}"));
+        Ok(())
+    }
+    fn drop_database(&self, role: &str, dbs: &[String]) -> Result<(), String> {
+        self.note(format!("drop_database {role} {}", dbs.join(",")));
+        Ok(())
+    }
+    fn purge_files(&self, module: &str) -> Result<(), String> {
+        self.note(format!("purge_files {module}"));
+        Ok(())
     }
 }
