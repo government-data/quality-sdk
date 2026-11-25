@@ -1,4 +1,6 @@
-# A copy of lake-rustfs's module.yaml at commit 761a939 (a test fixture: it must parse unchanged).
+# A copy of lake-rustfs's module.yaml at commit 761a939 (a test fixture: it must
+# parse unchanged), with `topology` in the shape of decision 0013 (0.1.0 is never
+# indexed).
 # The lake-rustfs module's manifest for quality-sdk (decision 0002): the lake
 # on RustFS. Its version is the module's one version source: a release tag is
 # `v` + this version, and tools/package.sh refuses any other.
@@ -32,9 +34,11 @@ provides:
 topology:
   roles:
     - name: lake
-      strategy: simultaneous
+      services: [rustfs, admin]
+      strategy: all
     - name: lake-replica
-      strategy: simultaneous
+      services: [rustfs, admin]
+      strategy: all
 
 health:
   services: [rustfs, admin]
