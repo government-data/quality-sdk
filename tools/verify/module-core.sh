@@ -36,6 +36,7 @@ API_URL="https://$INTERNAL_DOMAIN:$IPORT/api"
 ADMIN_EMAIL=admin@qs-verify.test
 ADMIN_PASSWORD="Qs-Verify-$RANDOM$RANDOM-Pw1"
 ALPINE="${ALPINE_IMAGE:-alpine:3}"
+SDK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # The core's files at main, read through gh (no checkout needed).
 core_file() { # PATH DEST
@@ -57,7 +58,7 @@ core_down() {
   fi
   docker rm -f "$CN-traefik" "$CN-api" >/dev/null 2>&1
   docker network rm "$EDGE" "$CN-net" >/dev/null 2>&1
-  as_root "rm -rf -- '${WORK:?}/root' '${WORK:?}/ca' '${WORK:?}/updater'" >/dev/null 2>&1
+  as_root "rm -rf -- '${WORK:?}/root' '${WORK:?}/ca' '${WORK:?}/updater' '${WORK:?}/secrets'" >/dev/null 2>&1
 }
 
 core_preflight() {
@@ -86,7 +87,7 @@ core_up() {
 {"version": "1.4.0", "modules": {"quality-data": {"version": "1.4.0", "images": {}}},
  "order": ["quality-data"]}
 EOF
-  local app_pw super_pw settings oidc_key
+  local app_pw super_pw settings
   app_pw="$(openssl rand -hex 16)"
   super_pw="$(openssl rand -hex 16)"
   settings="$(openssl rand -base64 32)"
@@ -131,14 +132,21 @@ EOF
     --entrypoint /usr/local/bin/server "$QD_API_IMAGE" ca-init --name "qs verify" \
     --cert /run/qd-ca/ca.crt --key /run/qd-ca/ca.key >"$WORK/ca.log" 2>&1 ||
     { echo "ca-init: $(tail -2 "$WORK/ca.log")"; return 1; }
-  oidc_key="$(docker run --rm --network none --entrypoint /usr/local/bin/server "$QD_API_IMAGE" oidc-keygen)"
-  local es256_key
-  es256_key="$(docker run --rm --network none --entrypoint /usr/local/bin/server "$QD_API_IMAGE" oidc-keygen --es256)"
+  # The OIDC provider's signing keys as the installer makes them (its
+  # core_secret, decision 0012 step 4), read by the API from files as the
+  # core's package passes them: no key set by hand.
+  # shellcheck source=/dev/null
+  source <(sed -n '/^core_secret() {/,/^}/p' "$SDK_ROOT/packaging/install.sh")
+  mkdir -p "$WORK/secrets"
+  core_secret ed25519 >"$WORK/secrets/oidc-signing-key"
+  core_secret p256 >"$WORK/secrets/oidc-signing-key-es256"
+  as_root "chown 65532:65532 '$WORK/secrets'/* && chmod 0400 '$WORK/secrets'/*"
   local apienv=(-e APP_HOST=0.0.0.0 -e APP_PORT=8080 -e "DATABASE_URL=$db"
     -e "APP_PUBLIC_URL=$WEB" -e "OAUTH_REDIRECT_BASE=$WEB/api" -e "INTERNAL_DOMAIN=$INTERNAL_DOMAIN"
     -e "TRAEFIK_INTERNAL_PORT=$IPORT" -e INTERNAL_CLIENT_CERT_HEADER=trusted
     -e CA_CERT_FILE=/run/qd-ca/ca.crt -e CA_KEY_FILE=/run/qd-ca/ca.key
-    -e "SETTINGS_ENCRYPTION_KEY=$settings" -e "OIDC_SIGNING_KEY=$oidc_key" -e "OIDC_SIGNING_KEY_ES256=$es256_key"
+    -e "SETTINGS_ENCRYPTION_KEY=$settings" -e OIDC_SIGNING_KEY_FILE=/run/secrets/oidc-signing-key
+    -e OIDC_SIGNING_KEY_ES256_FILE=/run/secrets/oidc-signing-key-es256 -v "$WORK/secrets:/run/secrets:ro"
     -e "ADMIN_BOOTSTRAP_EMAIL=$ADMIN_EMAIL" -e "ADMIN_BOOTSTRAP_PASSWORD=$ADMIN_PASSWORD"
     -e OBS_VM=qs-verify -v "$WORK/ca:/run/qd-ca:ro")
   docker run -d --name "$CN-api" --network "$CN-net" --network-alias api "${apienv[@]}" \
@@ -149,6 +157,9 @@ EOF
     sleep 1
   done
   [ -n "$up" ] || { echo "the API did not start: $(docker logs --tail 5 "$CN-api" 2>&1)"; return 1; }
+  if docker logs "$CN-api" 2>&1 | grep -q 'OIDC provider is not configured'; then
+    echo "the API did not take the installer's OIDC signing keys"; return 1
+  fi
   docker run --rm --network "$CN-net" "${apienv[@]}" --entrypoint /usr/local/bin/server \
     "$QD_API_IMAGE" bootstrap-admin >"$WORK/admin.log" 2>&1 ||
     { echo "bootstrap-admin: $(tail -2 "$WORK/admin.log")"; return 1; }
