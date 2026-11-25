@@ -39,7 +39,7 @@ ALPINE="${ALPINE_IMAGE:-alpine:3}"
 
 # The core's files at main, read through gh (no checkout needed).
 core_file() { # PATH DEST
-  gh api "repos/quality-data/core/contents/$1?ref=main" --jq .content | base64 -d >"$2"
+  gh api "repos/government-data/core/contents/$1?ref=main" --jq .content | base64 -d >"$2"
 }
 
 core_compose() { # ARGS: the core stand-in's project, as the agent runs it

@@ -20,7 +20,7 @@
 #
 # Needs: dig, curl, openssl, grep.
 #
-#   tools/verify/docs-site.sh orquestador.app quality-data
+#   tools/verify/docs-site.sh orquestador.app government-data
 set -euo pipefail
 
 if [ "$#" -ne 2 ]; then

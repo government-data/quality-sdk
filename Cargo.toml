@@ -9,7 +9,7 @@ edition = "2021"
 rust-version = "1.90"
 license = "MIT"
 authors = ["quality-data"]
-repository = "https://github.com/quality-data/quality-sdk"
+repository = "https://github.com/government-data/quality-sdk"
 
 [workspace.dependencies]
 # The SDK's own crates.

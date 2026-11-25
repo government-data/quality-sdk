@@ -29,8 +29,8 @@ no secret, but keep a copy.
 ## A module repository's CI pushes its images
 
 Each entry of `module_publishers` (by default `quality-data` →
-`quality-data/core`, images `api` and `web`; `docs` → `quality-data/docs`,
-image `web`; `lake-rustfs` → `quality-data/lake-rustfs`, image `admin`, not
+`government-data/core`, images `api` and `web`; `docs` → `government-data/docs`,
+image `web`; `lake-rustfs` → `government-data/lake-rustfs`, image `admin`, not
 the mirrored `rustfs` and `gate`) gets a role
 `quality-data-publish-<module>` that GitHub Actions assumes on a `v*` tag of
 that repository; it may push only to those ECR repositories. After applying, a
@@ -38,25 +38,27 @@ person sets two repository variables (Settings → Secrets and variables →
 Actions → Variables; an ARN is not a secret) in each module repository:
 
 ```bash
-gh variable set AWS_PUBLISH_ROLE --repo quality-data/core \
+gh variable set AWS_PUBLISH_ROLE --repo government-data/core \
   --body "$(terraform -chdir=infra/aws output -json module_publish_role_arns | jq -r '."quality-data"')"
-gh variable set AWS_REGION --repo quality-data/core --body us-east-1
+gh variable set AWS_REGION --repo government-data/core --body us-east-1
 ```
 
-Likewise for `quality-data/docs` and `quality-data/lake-rustfs` with the
+Likewise for `government-data/docs` and `government-data/lake-rustfs` with the
 output's `docs` and `lake-rustfs` keys.
 
 ## Renaming the GitHub organisation
 
 A role with `ids` trusts GitHub's immutable subject under the name in its
 `repo` and under every name in `github_owner_names` (by default
-`quality-data` and `government-data`), and the ids-only subject
+`government-data`), and the ids-only subject
 `repository_owner_id:<owner id>:repository_id:<repo id>:ref:refs/tags/v*`
 that a repository sends once its subject template is set to
 `["repository_owner_id", "repository_id", "ref"]`. The ids say which
-organisation and repository it is, so the trust works before and after the
+organisation and repository it is, so the trust works before and after a
 rename. Apply this before renaming; drop the old name from the trust only
-after a release has passed under the new one.
+after a release has passed under the new one. The organisation was renamed
+from `quality-data` to `government-data`, and the old name is no longer
+trusted.
 
 ## Verify Roles Anywhere (a person, after applying)
 
