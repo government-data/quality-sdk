@@ -1,0 +1,38 @@
+# The invented module's service: the relying party, as uid 1000 (the
+# manifest's secrets.uid), its secrets as Compose file secrets.
+services:
+  web:
+    image: ${IMAGE_WEB:?}
+    container_name: qs-verify-qsvbi-web
+    user: "1000:1000"
+    command: ["python", "/rp/rp.py"]
+    environment:
+      QD_OIDC_ISSUER: ${QD_OIDC_ISSUER:?}
+      QD_OIDC_PEOPLE_CLIENT_ID: ${QD_OIDC_PEOPLE_CLIENT_ID:?}
+      QD_OIDC_MACHINE_CLIENT_ID: ${QD_OIDC_MACHINE_CLIENT_ID:?}
+      QS_PUBLIC_URL: ${QS_PUBLIC_URL:?}
+    secrets: [oidc-people-secret, oidc-machine-secret, secret-key]
+    volumes:
+      - ./rp.py:/rp/rp.py:ro
+      - ${QS_WEB_CA:?}:/rp/web.crt:ro
+      - data:/data
+    networks:
+      edge:
+        aliases: [qsvbi-web]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/bi/health')"]
+      interval: 2s
+      retries: 30
+secrets:
+  oidc-people-secret:
+    file: ${QD_SECRETS_DIR:?}/oidc-people-secret
+  oidc-machine-secret:
+    file: ${QD_SECRETS_DIR:?}/oidc-machine-secret
+  secret-key:
+    file: ${QD_SECRETS_DIR:?}/secret-key
+volumes:
+  data: {}
+networks:
+  edge:
+    external: true
+    name: data-quality-edge

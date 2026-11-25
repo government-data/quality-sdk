@@ -1,0 +1,13 @@
+# An invented stand-in of query-trino for tools/verify/module-oidc.sh: it
+# provides sql-query with the token audience a consumer's machine client
+# gets (decision 0009, point 3). Never published.
+name: qsvtrino
+version: 1.0.0
+provides:
+  capabilities:
+    - name: sql-query
+      version: 1
+      protocols: [trino-client-protocol]
+      properties: { token-audience: trino }
+health:
+  services: [coordinator]

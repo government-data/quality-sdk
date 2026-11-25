@@ -1,0 +1,6 @@
+services:
+  coordinator:
+    image: ${IMAGE_COORDINATOR:?}
+    container_name: qs-verify-qsvtrino
+    command: ["sleep", "86400"]
+    stop_grace_period: 1s
