@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use super::{difference, enter, finish, leave_maintenance, outcome, Host, MAINTENANCE};
-use crate::state::{OutcomeKind, Phase, Previous, State, Target};
+use crate::state::{OutcomeKind, Phase, Previous, State, Target, CORE_MODULE};
 
 pub(super) fn apply(
     host: &dyn Host,
@@ -56,6 +56,17 @@ pub(super) fn apply(
     }
 }
 
+/// The version quality-data answers once `target` is up: its own
+/// module's, which a platform version that changes only other modules
+/// leaves as it was (decision 0014). The platform version if the target
+/// carries no such module.
+fn core_version(target: &Target) -> &str {
+    target
+        .modules
+        .get(CORE_MODULE)
+        .map_or(target.version.as_str(), |m| m.version.as_str())
+}
+
 pub(super) fn verify(
     host: &dyn Host,
     s: &mut State,
@@ -63,7 +74,7 @@ pub(super) fn verify(
     previous: Previous,
     backup: PathBuf,
 ) -> Result<bool, String> {
-    match host.healthy(Some(&target.version)) {
+    match host.healthy(Some(core_version(&target))) {
         Ok(()) => {
             if let Err(err) = host.install_commands() {
                 tracing::warn!("could not install the commands: {err}");

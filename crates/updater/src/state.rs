@@ -15,6 +15,11 @@ use serde::{Deserialize, Serialize};
 
 mod file;
 
+/// The core's module: the one whose version quality-data answers
+/// (decision 0014) and the one the state file's compatibility fields
+/// name (decision 0003).
+pub const CORE_MODULE: &str = "quality-data";
+
 /// A module at a platform version (decision 0003).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Module {
