@@ -338,3 +338,38 @@ fn an_update_is_requested_and_a_refusal_says_why() {
     assert!(err.contains("answered 404"), "an older quality-data: {err}");
     assert!(no_answer(&api(&closed()).request_update().unwrap_err()));
 }
+
+#[test]
+fn the_registry_token_is_put_and_a_refusal_does_not_repeat_it() {
+    use crate::registry::{RegistryToken, TokenSink};
+    use chrono::TimeZone;
+    let token = RegistryToken {
+        host: "1.dkr.ecr.us-east-1.amazonaws.com".into(),
+        username: "AWS".into(),
+        password: "secret-password".into(),
+        expires_at: chrono::Utc
+            .with_ymd_and_hms(2026, 11, 25, 18, 0, 0)
+            .unwrap(),
+    };
+    let (base, sent) = server(&[("PUT /updater/v1/registry", 204, "")]);
+    api(&base).put_registry(&token).unwrap();
+    let sent = sent.lock().unwrap();
+    let body: serde_json::Value = serde_json::from_str(&sent[0].2).unwrap();
+    assert_eq!(
+        body,
+        json!({
+            "host": "1.dkr.ecr.us-east-1.amazonaws.com",
+            "username": "AWS",
+            "password": "secret-password",
+            "expires_at": "2026-11-25T18:00:00Z",
+        })
+    );
+    let (base, _) = server(&[(
+        "PUT /updater/v1/registry",
+        400,
+        r#"{"error":"expires_at: too far"}"#,
+    )]);
+    let err = api(&base).put_registry(&token).unwrap_err();
+    assert!(err.contains("400 expires_at: too far"), "{err}");
+    assert!(!err.contains("secret-password"));
+}
