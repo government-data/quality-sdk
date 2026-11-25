@@ -76,22 +76,22 @@ trap cleanup EXIT INT TERM
 # The docs module at its main: manifest, compose, and its CI image.
 # CI runs on pull requests: the image is that of the pull request main's
 # commit was squashed from (the same files).
-SHA="$(gh api repos/quality-data/docs/commits/main --jq .sha)"
-HEAD="$(gh api "repos/quality-data/docs/commits/$SHA/pulls" --jq '.[0].head.sha // empty')"
-RUN="$(gh run list -R quality-data/docs --commit "${HEAD:-$SHA}" --workflow ci.yml \
+SHA="$(gh api repos/government-data/docs/commits/main --jq .sha)"
+HEAD="$(gh api "repos/government-data/docs/commits/$SHA/pulls" --jq '.[0].head.sha // empty')"
+RUN="$(gh run list -R government-data/docs --commit "${HEAD:-$SHA}" --workflow ci.yml \
   --status success --json databaseId --jq '.[0].databaseId // empty')"
 [ -n "$RUN" ] || { echo "no successful CI run of docs for $SHA"; exit 2; }
-gh run download "$RUN" -R quality-data/docs -n image-docs -D "$WORK/image" >/dev/null
+gh run download "$RUN" -R government-data/docs -n image-docs -D "$WORK/image" >/dev/null
 IMAGE="$(docker load -i "$WORK/image/qd-docs.tar" | sed -n 's/^Loaded image: //p' | tail -1)"
 mkdir -p "$WORK/pkg"
 for f in module.yaml compose.yml; do
-  gh api "repos/quality-data/docs/contents/$f?ref=$SHA" --jq .content | base64 -d >"$WORK/pkg/$f"
+  gh api "repos/government-data/docs/contents/$f?ref=$SHA" --jq .content | base64 -d >"$WORK/pkg/$f"
 done
 VERSION="$(sed -n 's/^version: //p' "$WORK/pkg/module.yaml")"
 PACKAGE="$WORK/$VERSION.tar.gz"
 tar -C "$WORK/pkg" -czf "$PACKAGE" module.yaml compose.yml
 mkdir -p "$WORK/core"
-gh api "repos/quality-data/core/contents/infra/traefik/dynamic/middlewares.yml" --jq .content |
+gh api "repos/government-data/core/contents/infra/traefik/dynamic/middlewares.yml" --jq .content |
   base64 -d >"$WORK/core/middlewares.yml"
 
 # The installation: quality-data installed at 1.4.0, Traefik's watched

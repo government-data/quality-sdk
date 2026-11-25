@@ -29,7 +29,7 @@
 
 [Unit]
 Description=Quality Data update agent
-Documentation=https://github.com/quality-data/quality-sdk
+Documentation=https://github.com/government-data/quality-sdk
 Wants=network-online.target
 After=network-online.target docker.service
 Requires=docker.service

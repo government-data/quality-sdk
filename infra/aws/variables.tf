@@ -88,12 +88,13 @@ variable "github_ids" {
 variable "github_owner_names" {
   description = <<-EOT
     The names the GitHub organisation is trusted under, besides the one in
-    each `repo`, while it is renamed (decision 0002): a role with ids trusts
-    the immutable subject `repo:<name>@<owner id>/<repo>@<repo id>` for each
-    name. The ids, not the names, say which organisation it is.
+    each `repo` (decision 0002): a role with ids trusts the immutable subject
+    `repo:<name>@<owner id>/<repo>@<repo id>` for each name. The ids, not
+    the names, say which organisation it is. The old name quality-data is
+    no longer trusted since the rename to government-data.
   EOT
   type        = list(string)
-  default     = ["quality-data", "government-data"]
+  default     = ["government-data"]
   validation {
     condition     = alltrue([for n in var.github_owner_names : can(regex("^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$", n))])
     error_message = "Each github_owner_names entry must be a GitHub organisation name: letters, digits and inner hyphens."
@@ -124,22 +125,22 @@ variable "module_publishers" {
       repo  = number
     }))
   }))
-  # quality-data/core, quality-data/docs and quality-data/lake-rustfs send
-  # GitHub's immutable subject (owner 359174349; repositories 1465567877,
+  # government-data/core, government-data/docs and government-data/lake-rustfs
+  # send GitHub's immutable subject (owner 359174349; repositories 1465567877,
   # 1467989556 and 1469349992), so their roles must trust that form.
   default = {
     "quality-data" = {
-      repo   = "quality-data/core"
+      repo   = "government-data/core"
       images = ["api", "web"]
       ids    = { owner = 359174349, repo = 1465567877 }
     }
     docs = {
-      repo   = "quality-data/docs"
+      repo   = "government-data/docs"
       images = ["web"]
       ids    = { owner = 359174349, repo = 1467989556 }
     }
     "lake-rustfs" = {
-      repo   = "quality-data/lake-rustfs"
+      repo   = "government-data/lake-rustfs"
       images = ["admin"]
       ids    = { owner = 359174349, repo = 1469349992 }
     }
