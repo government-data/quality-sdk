@@ -961,6 +961,7 @@ dependencies = [
  "flate2",
  "hex",
  "index-model",
+ "module-manifest",
  "p256",
  "rand_core",
  "semver",

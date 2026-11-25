@@ -103,6 +103,11 @@ pub fn warnings(
 
 /// The agent version `p`'s manifest needs (none: any agent reads it).
 fn needed(p: &LocalPackage) -> Result<Option<Version>, String> {
+    Ok(manifest(p)?.and_then(|m| m.agent_needed()))
+}
+
+/// `p`'s `module.yaml` (none: its package has none).
+pub fn manifest(p: &LocalPackage) -> Result<Option<module_manifest::Manifest>, String> {
     use rand_core::RngCore;
     // A folder of its own: publications in one process may read at once.
     let dir: PathBuf = std::env::temp_dir().join(format!(
@@ -116,7 +121,5 @@ fn needed(p: &LocalPackage) -> Result<Option<Version>, String> {
         .map_err(|e| format!("{}: {e}", file.display()))
         .and_then(|()| agent::modules::adapters::package_manifest(&file, &dir.join("x")));
     let _ = std::fs::remove_dir_all(&dir);
-    Ok(read
-        .map_err(|e| format!("{}: {e}", p.module))?
-        .and_then(|m| m.agent_needed()))
+    read.map_err(|e| format!("{}: {e}", p.module))
 }
