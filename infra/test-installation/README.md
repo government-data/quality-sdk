@@ -17,7 +17,8 @@ enrolment; the clusters do not enrol. Its state is local and apart from
 
 One security group per machine, rules by source group (`rules.tf`): SSH
 from `ssh_cidr` to each; the master's 443 from `ssh_cidr` and its 443 and
-9443 from both clusters; the coordinator's port from the worker and the
+9443 from both clusters, its 9444 (the lake gate's check) from the lake
+only; the coordinator's port from the worker and the
 worker's from the master; the lake's gate and adapter from the master and
 the worker; no PostgreSQL port. Out: 443 and 80 to the internet, and the
 ports above to their groups. On the clusters cloud-init adds `app_domain`
@@ -44,8 +45,8 @@ terraform output ssh
 
 Check: the plan adds only the three instances, their disks, groups and
 rules, and destroys nothing it did not make. After the apply, from each
-cluster `curl` reaches the master's 443 and 9443 by `app_domain`, and a
-port not listed is refused.
+cluster `curl` reaches the master's 443 and 9443 by `app_domain`, the
+lake also its 9444, and a port not listed is refused.
 
 ## Destroy (a person, after the test)
 
