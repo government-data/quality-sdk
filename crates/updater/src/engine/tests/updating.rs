@@ -132,3 +132,28 @@ fn a_provision_that_fails_goes_back_before_anything_starts() {
     assert!(!f.did("start:1.3.0"), "the new version did not start");
     assert!(f.did("start:1.2.0"), "the previous one started again");
 }
+
+#[test]
+fn it_saves_each_module_at_its_own_version() {
+    let f = Fake::new();
+    let mut installed = modules("1.2.0");
+    installed.get_mut("orchestrator").unwrap().version = "0.2.0".into();
+    *f.installed.borrow_mut() = Some(Installed {
+        version: "1.2.0".into(),
+        modules: installed,
+    });
+    let mut s = State::new("1.2.0");
+    run(&f, &mut s, Who::Person);
+
+    assert_eq!(s.last.as_ref().unwrap().kind, OutcomeKind::Updated);
+    assert_eq!(s.installed_version, "1.3.0");
+    in_order(
+        &f,
+        &[
+            "back_up",
+            "save_package:orchestrator:0.2.0",
+            "save_package:quality-data:1.2.0",
+            "put_version:1.3.0",
+        ],
+    );
+}

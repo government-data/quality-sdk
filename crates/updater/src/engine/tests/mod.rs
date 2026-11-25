@@ -39,6 +39,9 @@ struct Fake {
     /// What `replicas` answers, one each time it is asked; when none is
     /// left, no volume is backed up by a replica.
     replicas: RefCell<VecDeque<Result<Vec<Replica>, String>>>,
+    /// What is installed, when not every module is at the platform's
+    /// 1.2.0.
+    installed: RefCell<Option<Installed>>,
 }
 
 impl Fake {
@@ -183,10 +186,14 @@ impl Host for Fake {
         })
     }
     fn installed(&self) -> Result<Installed, String> {
-        Ok(Installed {
-            version: "1.2.0".into(),
-            modules: modules("1.2.0"),
-        })
+        Ok(self
+            .installed
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| Installed {
+                version: "1.2.0".into(),
+                modules: modules("1.2.0"),
+            }))
     }
     fn report_replica_refused(&self, o: &Outcome) {
         self.note(format!("report_replica_refused:{}", o.detail));
@@ -207,6 +214,13 @@ impl Host for Fake {
     }
     fn save_package(&self, module: &str, version: &str) -> Result<(PathBuf, Vec<String>), String> {
         self.note(format!("save_package:{module}:{version}"));
+        // As the agent's files do: only the module's installed version.
+        let installed = self.installed()?;
+        if installed.modules.get(module).map(|m| m.version.as_str()) != Some(version) {
+            return Err(format!(
+                "the installed files of {module} are not {version}'s"
+            ));
+        }
         Ok((
             format!("/releases/{module}-{version}.tar").into(),
             vec!["compose.yml".into(), "assets/app-1.2.0.js".into()],

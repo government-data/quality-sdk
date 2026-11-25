@@ -99,8 +99,9 @@ pub(super) fn back_up(
         let backup = host.back_up()?;
         let installed = host.installed()?;
         let mut packages = Vec::with_capacity(installed.modules.len());
-        for module in installed.modules.keys() {
-            let (path, manifest) = host.save_package(module, &installed.version)?;
+        // Each module at its own installed version, not the platform's.
+        for (module, m) in &installed.modules {
+            let (path, manifest) = host.save_package(module, &m.version)?;
             packages.push(SavedPackage {
                 module: module.clone(),
                 path,
