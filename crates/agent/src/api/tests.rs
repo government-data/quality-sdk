@@ -302,6 +302,25 @@ fn a_module_says_the_capabilities_it_provides_and_none_is_not_sent() {
 }
 
 #[test]
+fn a_module_s_roles_are_sent_as_the_core_reads_them_and_none_is_not_sent() {
+    use crate::module_roles::ModuleRole;
+    let mut m = InstalledModule::new("lake-rustfs", "0.2.1", None, &Features::default());
+    assert!(serde_json::to_value(&m).unwrap().get("roles").is_none());
+    let image = format!("r.example/lake/rustfs@sha256:{}", "a".repeat(64));
+    m.roles = vec![ModuleRole {
+        name: "lake".into(),
+        strategy: "all".into(),
+        services: vec!["rustfs".into()],
+        images: vec![image.clone()],
+    }];
+    let body = serde_json::to_value(&m).unwrap();
+    assert_eq!(
+        body["roles"],
+        json!([{ "name": "lake", "strategy": "all", "services": ["rustfs"], "images": [image] }])
+    );
+}
+
+#[test]
 fn an_api_that_does_not_answer_fails_every_call_but_orders() {
     let a = api(&closed());
     let err = a.version().unwrap_err();

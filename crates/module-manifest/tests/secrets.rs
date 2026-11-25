@@ -182,8 +182,14 @@ fn a_manifest_with_these_keys_needs_the_agent_that_reads_them() {
     for text in [
         include_str!("fixtures/docs.yaml"),
         include_str!("fixtures/quality-data.yaml"),
-        include_str!("fixtures/lake-rustfs.yaml"),
     ] {
         assert_eq!(Manifest::parse(text).unwrap().agent_needed(), None);
     }
+    // Its `topology` needs the agent that tells the core its roles
+    // (decision 0013), and nothing older.
+    let lake = Manifest::parse(include_str!("fixtures/lake-rustfs.yaml")).unwrap();
+    assert_eq!(
+        lake.agent_needed().unwrap().to_string(),
+        module_manifest::ROLES_AGENT
+    );
 }

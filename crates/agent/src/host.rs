@@ -30,6 +30,8 @@ use updater::engine::{
 use updater::policy::Orders;
 use updater::state::{Modules, Outcome, State};
 
+use crate::module_roles::ModuleRole;
+
 pub use crate::installed_module::{Features, InLanguages, InstalledModule, ModuleMenu};
 
 /// Where versions come from: the AWS side (decision 0001).
@@ -58,6 +60,11 @@ pub trait Compose {
     fn modules_healthy(&self) -> Result<(), String>;
     /// The installed module's manifest (none: its package has none).
     fn manifest(&self, module: &str) -> Result<Option<Manifest>, String>;
+    /// The installed module's machine roles with their images (decision
+    /// 0013), from its `compose.yml` and `.env`.
+    fn roles(&self, _module: &str, _manifest: &Manifest) -> Vec<ModuleRole> {
+        Vec::new()
+    }
 }
 
 /// The database: back up, check the backup, restore.
@@ -195,12 +202,12 @@ impl AgentHost {
                 .iter()
                 .map(|(name, m)| {
                     let manifest = compose.manifest(name)?;
-                    Ok(InstalledModule::new(
-                        name,
-                        &m.version,
-                        manifest.as_ref(),
-                        &features,
-                    ))
+                    let mut told =
+                        InstalledModule::new(name, &m.version, manifest.as_ref(), &features);
+                    if let Some(manifest) = &manifest {
+                        told.roles = compose.roles(name, manifest);
+                    }
+                    Ok(told)
                 })
                 .collect::<Result<Vec<_>, String>>()?;
             self.adapters.api.put_modules(&modules)

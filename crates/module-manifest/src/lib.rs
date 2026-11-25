@@ -65,3 +65,8 @@ pub const REPLICA_BACKUP_AGENT: &str = "0.5.0";
 /// The first agent version that reads `secrets.generate[].kind` (decision
 /// 0012 step 2): an older agent refuses the key.
 pub const SECRET_KIND_AGENT: &str = "0.4.0";
+
+/// The first agent version that tells the core a module's `topology`
+/// roles (decision 0013): an older one accepts the key and tells none, so
+/// the role's machines would get nothing.
+pub const ROLES_AGENT: &str = "0.7.0";

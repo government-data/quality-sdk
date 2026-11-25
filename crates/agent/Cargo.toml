@@ -1,6 +1,6 @@
 [package]
 name = "agent"
-version = "0.6.1"
+version = "0.7.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -36,6 +36,8 @@ rand_core.workspace = true
 ring.workspace = true
 semver.workspace = true
 serde.workspace = true
+# A module's compose.yml, read for the images of its roles (decision 0013).
+serde-saphyr.workspace = true
 serde_json.workspace = true
 # The OID of SHA-256, which names the request's signature.
 sha2 = { workspace = true, features = ["oid"] }

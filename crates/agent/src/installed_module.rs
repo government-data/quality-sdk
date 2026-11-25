@@ -51,6 +51,11 @@ pub struct InstalledModule {
     /// none; an older core ignores it).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub provides: Vec<String>,
+    /// Its machine roles and the images each gets (decision 0013; absent:
+    /// none; an older core ignores it). Set by the host, which reads the
+    /// module's `compose.yml`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub roles: Vec<crate::module_roles::ModuleRole>,
 }
 
 /// A module's menu entry as `PUT /updater/v1/modules` names it: its label
@@ -122,6 +127,7 @@ impl InstalledModule {
                         .collect()
                 })
                 .unwrap_or_default(),
+            roles: Vec::new(),
         }
     }
 }

@@ -282,7 +282,8 @@ impl Manifest {
     /// is `dump` and needs nothing); [`crate::MODULE_ADD_AGENT`] for
     /// `oidc`, `secrets`, `data.databases[].create`, `menu.requires` or
     /// `permissions` (decision 0009); [`crate::SECRET_KIND_AGENT`] for a
-    /// written `secrets.generate[].kind` (decision 0012); none for a
+    /// written `secrets.generate[].kind` (decision 0012);
+    /// [`crate::ROLES_AGENT`] for `topology` (decision 0013); none for a
     /// manifest that uses none of them.
     pub fn agent_needed(&self) -> Option<semver::Version> {
         let module_add = self.oidc.is_some()
@@ -298,6 +299,7 @@ impl Manifest {
             module_add.then(|| version(crate::MODULE_ADD_AGENT)),
             backup.then(|| version(crate::REPLICA_BACKUP_AGENT)),
             kind.then(|| version(crate::SECRET_KIND_AGENT)),
+            self.topology.is_some().then(|| version(crate::ROLES_AGENT)),
         ];
         needed.into_iter().flatten().max()
     }
