@@ -22,6 +22,9 @@
 pub mod agents;
 pub mod images;
 pub mod input;
+pub mod shared;
+
+use std::collections::BTreeMap;
 
 use aws_client::client::{AwsError, Bucket};
 use aws_client::kms::Kms;
@@ -129,6 +132,19 @@ pub fn publish(
     let bytes = serde_json::to_vec_pretty(&next).map_err(|e| e.to_string())?;
     Index::parse(&bytes).map_err(|e| format!("{version} cannot be published: {e}"))?;
     let added = next.versions.last().ok_or("no version to publish")?;
+    // A manifest that cannot be read is warned about below, not checked.
+    let mut manifests = BTreeMap::new();
+    for p in &release.packages {
+        if let Ok(Some(m)) = agents::manifest(p) {
+            manifests.insert(p.module.clone(), m);
+        }
+    }
+    let shared_images = added
+        .modules
+        .iter()
+        .map(|(name, m)| (name.clone(), m.images.clone()))
+        .collect();
+    shared::check(&version.to_string(), &shared_images, &manifests)?;
     images::check(registry, added)?;
 
     let reported = agents::oldest_reported(store, channel)?;

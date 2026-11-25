@@ -495,3 +495,73 @@ fn a_configured_minimum_counts_as_the_oldest_agent() {
     assert!(w[0].contains("min_agent 0.1.0"), "{w:?}");
     assert!(publish_with(&Memory::default(), NEEDS_NEW_AGENT, Some("0.2.0")).is_empty());
 }
+
+/// engine-trino and query-trino at 1.5.0, query-trino requiring
+/// `trino-cluster` 484 of engine-trino, mirroring Trino at `engine` and
+/// `worker`.
+fn trino_release(engine: char, worker: char) -> Release {
+    let d = dir(&format!("publish-trino-{engine}{worker}"));
+    let provider = "name: engine-trino\nversion: 0.1.0\nprovides:\n  capabilities:\n    \
+                    - { name: trino-cluster, version: 484, protocols: [trino-http] }\n";
+    let consumer = "name: query-trino\nversion: 0.1.0\nrequires:\n  capabilities:\n    \
+                    - { name: trino-cluster, version: 484, protocols: [trino-http] }\n";
+    std::fs::write(d.join("e.tar.gz"), package_with(provider)).unwrap();
+    std::fs::write(d.join("q.tar.gz"), package_with(consumer)).unwrap();
+    let digest = |c: char| std::iter::repeat_n(c, 64).collect::<String>();
+    let text = format!(
+        r#"
+version = "1.5.0"
+upgrade_from = ">=1.3.0, <1.5.0"
+[rollout]
+percent = 0
+[modules.engine-trino]
+version = "0.1.0"
+package = "e.tar.gz"
+provides = ["trino-cluster"]
+[modules.engine-trino.images]
+trino = "{REGISTRY}/quality-data/engine-trino/trino@sha256:{}"
+[modules.query-trino]
+version = "0.1.0"
+package = "q.tar.gz"
+requires = ["trino-cluster"]
+[modules.query-trino.images]
+trino = "{REGISTRY}/quality-data/query-trino/trino@sha256:{}"
+"#,
+        digest(engine),
+        digest(worker)
+    );
+    let r = parse(&text, &d).unwrap();
+    std::fs::remove_dir_all(d).unwrap();
+    r
+}
+
+#[test]
+fn a_requirer_mirroring_another_digest_of_its_provider_s_image_is_refused() {
+    let m = Memory::default();
+    let err = publish(
+        &m,
+        &signer(1),
+        &Ecr::default(),
+        &key(1),
+        Channel::Stable,
+        trino_release('a', 'b'),
+        at(0),
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("query-trino requires trino-cluster 484 of engine-trino"),
+        "{err}"
+    );
+    assert!(m.objects.borrow().is_empty(), "nothing written");
+    let done = publish(
+        &m,
+        &signer(1),
+        &Ecr::default(),
+        &key(1),
+        Channel::Stable,
+        trino_release('a', 'a'),
+        at(1),
+    )
+    .unwrap();
+    assert_eq!(done.sequence, 1);
+}

@@ -26,6 +26,8 @@ base64.workspace = true
 chrono.workspace = true
 hex.workspace = true
 index-model.workspace = true
+# The packages' manifests, for the images shared with a provider (decision 0011).
+module-manifest.workspace = true
 p256.workspace = true
 rand_core.workspace = true
 semver.workspace = true
