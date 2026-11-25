@@ -312,11 +312,25 @@ fn a_module_s_roles_are_sent_as_the_core_reads_them_and_none_is_not_sent() {
         strategy: "all".into(),
         services: vec!["rustfs".into()],
         images: vec![image.clone()],
+        files: vec![crate::role_files::RoleFile::new(
+            "compose.yml",
+            b"services: {}\n",
+        )],
     }];
     let body = serde_json::to_value(&m).unwrap();
     assert_eq!(
         body["roles"],
-        json!([{ "name": "lake", "strategy": "all", "services": ["rustfs"], "images": [image] }])
+        json!([{
+            "name": "lake",
+            "strategy": "all",
+            "services": ["rustfs"],
+            "images": [image],
+            "files": [{
+                "path": "compose.yml",
+                "sha256": "fa6ccea1ca4e3a031d9e99f25cc05db803aa9bac642c000ddab14f6d9da54b52",
+                "content_base64": "c2VydmljZXM6IHt9Cg==",
+            }],
+        }])
     );
 }
 

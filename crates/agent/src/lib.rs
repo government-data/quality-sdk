@@ -30,6 +30,7 @@ pub mod paths;
 pub mod postgres;
 pub mod registry;
 pub mod replicas;
+pub mod role_files;
 pub mod routes;
 pub mod service;
 pub mod update;
