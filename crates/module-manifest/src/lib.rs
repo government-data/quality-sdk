@@ -15,6 +15,9 @@
 //! the databases the agent creates, a menu entry that depends on an
 //! action, and its own actions and managed policies.
 //!
+//! Its machine roles (`topology`, decision 0013): the services each role
+//! runs on a joined machine and how those machines are updated.
+//!
 //! Pure: it reads text and answers values. Reading `module.yaml`, backing
 //! up and checking health belong to the agent.
 
@@ -25,6 +28,7 @@ mod oidc;
 mod permissions;
 mod route;
 mod secrets;
+mod topology;
 mod validate;
 
 pub use checks::{lost_on_removal, unmet, Loss, Unmet, Why};
@@ -44,6 +48,7 @@ pub use secrets::{
     database_prefix, GeneratedSecret, SecretContent, SecretKind, Secrets, DATABASE_PASSWORD,
     ISSUED_SECRETS, MAX_CREATED_DATABASES, OIDC_MACHINE_SECRET, OIDC_PEOPLE_SECRET, SECRET_BYTES,
 };
+pub use topology::{Role, Strategy, Topology, MAX_ROLES, MAX_ROLE_SERVICES, RESERVED_ROLES};
 pub use validate::RESERVED_MODULE_NAMES;
 
 /// The first agent version that reads what a module gets at `module add`

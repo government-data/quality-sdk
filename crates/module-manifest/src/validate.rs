@@ -5,13 +5,13 @@ use std::collections::BTreeSet;
 use crate::model::{Backup, Data, Drain, Health, Manifest, MAX_CHECK_TIMEOUT_SECS};
 use crate::ManifestError;
 
-fn invalid(why: String) -> ManifestError {
+pub(crate) fn invalid(why: String) -> ManifestError {
     ManifestError::Invalid(why)
 }
 
 /// `[a-z0-9]` then `[a-z0-9_-]`, at most 63: a module, a capability, a
 /// volume's name in the backup.
-fn check_name(what: &str, name: &str) -> Result<(), ManifestError> {
+pub(crate) fn check_name(what: &str, name: &str) -> Result<(), ManifestError> {
     let ok = !name.is_empty()
         && name.len() <= 63
         && name.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
@@ -58,7 +58,7 @@ pub(crate) fn check_service(what: &str, s: &str) -> Result<(), ManifestError> {
 }
 
 /// Each `item` of `what` once.
-fn check_unique<'a>(
+pub(crate) fn check_unique<'a>(
     what: &str,
     items: impl IntoIterator<Item = &'a str>,
 ) -> Result<(), ManifestError> {
@@ -101,6 +101,7 @@ impl Manifest {
         validate_data(&self.data)?;
         validate_drain(self.drain.as_ref())?;
         crate::route::validate(self.route.as_ref(), self.auth, self.menu.as_ref())?;
+        crate::topology::validate(self.topology.as_ref())?;
         crate::secrets::validate_secrets(&self.secrets)?;
         crate::secrets::validate_created(&self.name, &self.data.databases)?;
         let declared = crate::permissions::validate(&self.name, self.permissions.as_ref())?;
