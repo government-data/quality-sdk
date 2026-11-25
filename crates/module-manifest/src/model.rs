@@ -212,9 +212,23 @@ pub struct Volume {
     pub path: String,
     #[serde(default = "critical")]
     pub critical: bool,
-    /// How a critical volume is backed up before an update.
-    #[serde(default)]
-    pub backup: Backup,
+    /// How a critical volume is backed up before an update, as written:
+    /// `None` when the key is left out ([`Volume::backup`] reads it).
+    #[serde(default, rename = "backup")]
+    written_backup: Option<Backup>,
+}
+
+impl Volume {
+    /// How it is backed up: as written, [`Backup::Dump`] when left out.
+    pub fn backup(&self) -> Backup {
+        self.written_backup.unwrap_or_default()
+    }
+
+    /// Whether the manifest writes `backup`, `dump` or `replica`: a key an
+    /// agent older than [`crate::REPLICA_BACKUP_AGENT`] refuses.
+    pub fn backup_written(&self) -> bool {
+        self.written_backup.is_some()
+    }
 }
 
 /// How a critical volume is backed up (decision 0002).
@@ -260,8 +274,9 @@ impl Manifest {
     }
 
     /// The agent version that first reads the keys this manifest uses, the
-    /// highest of them: [`crate::REPLICA_BACKUP_AGENT`] for a volume with
-    /// `backup: replica` (decision 0002); [`crate::MODULE_ADD_AGENT`] for
+    /// highest of them: [`crate::REPLICA_BACKUP_AGENT`] for a volume that
+    /// writes `backup`, `dump` or `replica` (decision 0002; left out, it
+    /// is `dump` and needs nothing); [`crate::MODULE_ADD_AGENT`] for
     /// `oidc`, `secrets`, `data.databases[].create`, `menu.requires` or
     /// `permissions` (decision 0009); none for a manifest that uses none
     /// of them.
@@ -272,15 +287,11 @@ impl Manifest {
             || self.secrets.uid != 0
             || self.created_databases().next().is_some()
             || self.menu.as_ref().is_some_and(|m| m.requires.is_some());
-        let replica = self
-            .data
-            .volumes
-            .iter()
-            .any(|v| v.backup == Backup::Replica);
+        let backup = self.data.volumes.iter().any(Volume::backup_written);
         let version = |v: &str| semver::Version::parse(v).expect("a version");
         let needed = [
             module_add.then(|| version(crate::MODULE_ADD_AGENT)),
-            replica.then(|| version(crate::REPLICA_BACKUP_AGENT)),
+            backup.then(|| version(crate::REPLICA_BACKUP_AGENT)),
         ];
         needed.into_iter().flatten().max()
     }
@@ -325,7 +336,7 @@ impl Data {
     /// one but the volumes whose backup is a replica.
     pub fn dumped(&self) -> Data {
         let mut data = self.critical();
-        data.volumes.retain(|v| v.backup == Backup::Dump);
+        data.volumes.retain(|v| v.backup() == Backup::Dump);
         data
     }
 
@@ -333,6 +344,6 @@ impl Data {
     pub fn replicated(&self) -> impl Iterator<Item = &Volume> {
         self.volumes
             .iter()
-            .filter(|v| v.critical && v.backup == Backup::Replica)
+            .filter(|v| v.critical && v.backup() == Backup::Replica)
     }
 }

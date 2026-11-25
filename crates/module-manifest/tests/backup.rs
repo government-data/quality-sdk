@@ -20,7 +20,8 @@ fn a_volume_is_dumped_unless_it_says_otherwise() {
         "    - { name: catalog, service: s, path: /var/lib/s }\n",
     ))
     .unwrap();
-    assert_eq!(m.data.volumes[0].backup, Backup::Dump);
+    assert_eq!(m.data.volumes[0].backup(), Backup::Dump);
+    assert!(!m.data.volumes[0].backup_written());
     assert_eq!(m.data.dumped().volumes.len(), 1);
     assert_eq!(m.data.replicated().count(), 0);
 }
@@ -81,9 +82,19 @@ fn a_replicated_volume_needs_the_agent_that_reads_backup() {
         agent_needed(&replica).as_deref(),
         Some(REPLICA_BACKUP_AGENT)
     );
-    // A volume copied into the backup, as every agent does, needs none.
+    // A volume that leaves the key out is copied, as every agent does.
     let dump = with_volumes("    - { name: d, service: s, path: /d }\n");
     assert_eq!(agent_needed(&dump), None);
+}
+
+#[test]
+fn an_explicit_backup_dump_needs_the_agent_that_reads_the_key() {
+    let text = with_volumes("    - { name: d, service: s, path: /d, backup: dump }\n");
+    let m = Manifest::parse(&text).unwrap();
+    assert_eq!(m.data.volumes[0].backup(), Backup::Dump);
+    assert!(m.data.volumes[0].backup_written());
+    assert_eq!(m.data.dumped().volumes.len(), 1);
+    assert_eq!(agent_needed(&text).as_deref(), Some(REPLICA_BACKUP_AGENT));
 }
 
 #[test]
