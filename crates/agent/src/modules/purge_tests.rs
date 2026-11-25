@@ -60,6 +60,8 @@ fn an_installed_module_is_removed_backed_up_then_deleted_in_order() {
         f.calls().last().unwrap(),
         "report module_purged 1.4.0 bi 1.0.0"
     );
+    // The core is told the modules again at `delete`, after `remove`'s.
+    assert_eq!(f.calls().iter().filter(|c| *c == "tell").count(), 3);
 }
 
 #[test]
