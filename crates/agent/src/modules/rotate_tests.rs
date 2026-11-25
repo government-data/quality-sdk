@@ -112,7 +112,12 @@ fn a_crash_at_each_step_resumes_with_the_same_new_values() {
 fn a_stopped_rotation_resumes_from_its_step_without_staging_again() {
     let f = added();
     f.provision
-        .ensure_secret("bi", "oidc-people-secret.next", 32, 0)
+        .ensure_secret(
+            "bi",
+            "oidc-people-secret.next",
+            module_manifest::SecretContent::Random { bytes: 32 },
+            0,
+        )
         .unwrap();
     let staged = secret(&f, "oidc-people-secret.next");
     f.provision.progress.borrow_mut().insert(

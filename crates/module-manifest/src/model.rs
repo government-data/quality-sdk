@@ -278,8 +278,9 @@ impl Manifest {
     /// writes `backup`, `dump` or `replica` (decision 0002; left out, it
     /// is `dump` and needs nothing); [`crate::MODULE_ADD_AGENT`] for
     /// `oidc`, `secrets`, `data.databases[].create`, `menu.requires` or
-    /// `permissions` (decision 0009); none for a manifest that uses none
-    /// of them.
+    /// `permissions` (decision 0009); [`crate::SECRET_KIND_AGENT`] for a
+    /// written `secrets.generate[].kind` (decision 0012); none for a
+    /// manifest that uses none of them.
     pub fn agent_needed(&self) -> Option<semver::Version> {
         let module_add = self.oidc.is_some()
             || self.permissions.is_some()
@@ -288,10 +289,12 @@ impl Manifest {
             || self.created_databases().next().is_some()
             || self.menu.as_ref().is_some_and(|m| m.requires.is_some());
         let backup = self.data.volumes.iter().any(Volume::backup_written);
+        let kind = self.secrets.generate.iter().any(|g| g.kind.is_some());
         let version = |v: &str| semver::Version::parse(v).expect("a version");
         let needed = [
             module_add.then(|| version(crate::MODULE_ADD_AGENT)),
             backup.then(|| version(crate::REPLICA_BACKUP_AGENT)),
+            kind.then(|| version(crate::SECRET_KIND_AGENT)),
         ];
         needed.into_iter().flatten().max()
     }

@@ -31,6 +31,9 @@ hex = "0.4"
 hmac = "0.12"
 # ECDSA P-256 signatures, as KMS makes them (ECC_NIST_P256, ECDSA_SHA_256).
 p256 = "0.13"
+# Ed25519 and P-256 private keys a module asks for (decision 0012), PKCS#8
+# as the core's OIDC provider reads them; already built for rustls.
+ring = { version = "0.17.14", default-features = false, features = ["alloc"] }
 # Randomness from the operating system: keys and certificate serials.
 rand_core = { version = "0.6", features = ["getrandom"] }
 semver = { version = "1", features = ["serde"] }

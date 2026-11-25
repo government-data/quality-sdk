@@ -1,7 +1,7 @@
 //! `secrets` and `data.databases[].create` (decision 0009): each rule
 //! refused and accepted; the manifests of today parse unchanged.
 
-use module_manifest::{Manifest, ManifestError, SECRET_BYTES};
+use module_manifest::{Manifest, ManifestError, SecretContent, SECRET_BYTES};
 
 /// Part of the example of decision 0009, point 1 (invented values only).
 const BI: &str = r"
@@ -35,7 +35,12 @@ fn the_example_reads_its_secrets_and_database() {
     let m = Manifest::parse(BI).unwrap();
     assert_eq!(m.secrets.uid, 1000);
     assert_eq!(m.secrets.generate[0].name, "secret-key");
-    assert_eq!(m.secrets.generate[1].bytes, SECRET_BYTES);
+    assert_eq!(
+        m.secrets.generate[1].content(),
+        SecretContent::Random {
+            bytes: SECRET_BYTES
+        }
+    );
     assert!(!m.secrets.generate[1].critical);
     assert!(m.data.databases[0].create);
     assert_eq!(m.created_databases().count(), 1);

@@ -8,6 +8,8 @@
 //!     - name: secret-key       # [a-z0-9-], at most 64
 //!       bytes: 32              # 16 to 64, default 32
 //!       critical: true         # default true: backed up as a key
+//!     - name: signing-key
+//!       kind: ed25519          # random (default) | ed25519 | p256
 //! data:
 //!   databases:
 //!     - name: bi_superset
@@ -45,20 +47,65 @@ pub struct Secrets {
     pub generate: Vec<GeneratedSecret>,
 }
 
-/// A file of random bytes, made once and kept.
+/// A file the agent makes once and keeps: random bytes or a private key.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeneratedSecret {
     pub name: String,
-    #[serde(default = "secret_bytes")]
-    pub bytes: u32,
+    /// What the file holds (decision 0012 step 2); left out, `random`.
+    /// Kept as written: an agent older than [`crate::SECRET_KIND_AGENT`]
+    /// refuses the key even when it says `random`.
+    #[serde(default)]
+    pub kind: Option<SecretKind>,
+    /// The random bytes' size, for `random` only; left out,
+    /// [`SECRET_BYTES`].
+    #[serde(default)]
+    pub bytes: Option<u32>,
     /// Backed up and checked before every update, as a key.
     #[serde(default = "yes")]
     pub critical: bool,
 }
 
-fn secret_bytes() -> u32 {
-    SECRET_BYTES
+/// `secrets.generate[].kind`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SecretKind {
+    /// Random bytes, base64url without padding.
+    #[default]
+    Random,
+    /// An Ed25519 private key, PKCS#8 DER in base64.
+    Ed25519,
+    /// A P-256 (ECDSA) private key, PKCS#8 DER in base64.
+    P256,
+}
+
+/// What the agent writes into a secret file, with no newline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecretContent {
+    /// `bytes` random bytes, base64url without padding.
+    Random { bytes: u32 },
+    /// A new Ed25519 private key, PKCS#8 in standard base64.
+    Ed25519,
+    /// A new P-256 private key, PKCS#8 in standard base64.
+    P256,
+}
+
+impl GeneratedSecret {
+    /// `kind`, `random` when left out.
+    pub fn kind(&self) -> SecretKind {
+        self.kind.unwrap_or_default()
+    }
+
+    /// What the agent writes for this entry.
+    pub fn content(&self) -> SecretContent {
+        match self.kind() {
+            SecretKind::Random => SecretContent::Random {
+                bytes: self.bytes.unwrap_or(SECRET_BYTES),
+            },
+            SecretKind::Ed25519 => SecretContent::Ed25519,
+            SecretKind::P256 => SecretContent::P256,
+        }
+    }
 }
 
 fn yes() -> bool {
@@ -70,7 +117,7 @@ fn invalid(why: String) -> ManifestError {
 }
 
 /// `secrets.generate`: names of `[a-z0-9-]`, at most 64, unique, none the
-/// agent issues; 16 to 64 bytes.
+/// agent issues; 16 to 64 bytes, and `bytes` only for `random`.
 pub(crate) fn validate_secrets(s: &Secrets) -> Result<(), ManifestError> {
     let mut seen = BTreeSet::new();
     for g in &s.generate {
@@ -96,11 +143,20 @@ pub(crate) fn validate_secrets(s: &Secrets) -> Result<(), ManifestError> {
                 g.name
             )));
         }
-        if !(16..=64).contains(&g.bytes) {
-            return Err(invalid(format!(
-                "secrets.generate {}: bytes is 16 to 64",
-                g.name
-            )));
+        match (g.kind(), g.bytes) {
+            (SecretKind::Random, Some(b)) if !(16..=64).contains(&b) => {
+                return Err(invalid(format!(
+                    "secrets.generate {}: bytes is 16 to 64",
+                    g.name
+                )));
+            }
+            (SecretKind::Ed25519 | SecretKind::P256, Some(_)) => {
+                return Err(invalid(format!(
+                    "secrets.generate {}: bytes is for kind random only",
+                    g.name
+                )));
+            }
+            _ => {}
         }
     }
     Ok(())

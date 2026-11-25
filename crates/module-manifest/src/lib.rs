@@ -41,8 +41,8 @@ pub use oidc::{
 pub use permissions::{Action, Permissions, Policy};
 pub use route::{Auth, InLanguages, Menu, Route, RESERVED_ROUTE_SEGMENTS};
 pub use secrets::{
-    database_prefix, GeneratedSecret, Secrets, DATABASE_PASSWORD, ISSUED_SECRETS,
-    MAX_CREATED_DATABASES, OIDC_MACHINE_SECRET, OIDC_PEOPLE_SECRET, SECRET_BYTES,
+    database_prefix, GeneratedSecret, SecretContent, SecretKind, Secrets, DATABASE_PASSWORD,
+    ISSUED_SECRETS, MAX_CREATED_DATABASES, OIDC_MACHINE_SECRET, OIDC_PEOPLE_SECRET, SECRET_BYTES,
 };
 pub use validate::RESERVED_MODULE_NAMES;
 
@@ -53,3 +53,7 @@ pub const MODULE_ADD_AGENT: &str = "0.2.0";
 /// The first agent version that reads `data.volumes[].backup` (decision
 /// 0002): an older agent refuses the key, `dump` or `replica`.
 pub const REPLICA_BACKUP_AGENT: &str = "0.3.0";
+
+/// The first agent version that reads `secrets.generate[].kind` (decision
+/// 0012 step 2): an older agent refuses the key.
+pub const SECRET_KIND_AGENT: &str = "0.4.0";

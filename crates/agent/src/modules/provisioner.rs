@@ -13,6 +13,7 @@ use crate::host::{Api, Features};
 use crate::module_secrets::{ModuleSecrets, Secret};
 use crate::paths::Paths;
 use crate::postgres::Postgres;
+use module_manifest::SecretContent;
 
 /// The installation's adapters for what a module gets.
 pub struct Provisioner {
@@ -104,8 +105,14 @@ impl Provision for Provisioner {
     fn secrets_dir(&self, module: &str) -> PathBuf {
         self.secrets.dir(module)
     }
-    fn ensure_secret(&self, module: &str, name: &str, bytes: u32, uid: u32) -> Result<(), String> {
-        self.secrets.ensure(module, name, bytes, uid).map(|_| ())
+    fn ensure_secret(
+        &self,
+        module: &str,
+        name: &str,
+        content: SecretContent,
+        uid: u32,
+    ) -> Result<(), String> {
+        self.secrets.ensure(module, name, content, uid).map(|_| ())
     }
     fn secret(&self, module: &str, name: &str) -> Result<Secret, String> {
         self.secrets.read(module, name)

@@ -1,6 +1,6 @@
 [package]
 name = "agent"
-version = "0.3.1"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -32,6 +32,8 @@ module-manifest.workspace = true
 # certificate for the `internal` entry point; the key's PKCS #8 PEM.
 p256.workspace = true
 rand_core.workspace = true
+# A module's generated `ed25519` and `p256` keys (decision 0012).
+ring.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true

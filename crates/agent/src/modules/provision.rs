@@ -7,13 +7,19 @@
 use std::path::PathBuf;
 
 use module_manifest::{
-    Manifest, DATABASE_PASSWORD, OIDC_MACHINE_SECRET, OIDC_PEOPLE_SECRET, SECRET_BYTES,
+    Manifest, SecretContent, DATABASE_PASSWORD, OIDC_MACHINE_SECRET, OIDC_PEOPLE_SECRET,
+    SECRET_BYTES,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::api::modules::{AuditEvent, Clients, ClientsAnswer, MachineClient, PeopleClient};
 use crate::host::Features;
 use crate::module_secrets::Secret;
+
+/// The files the agent issues: random bytes of the default size.
+const ISSUED: SecretContent = SecretContent::Random {
+    bytes: SECRET_BYTES,
+};
 
 /// The port of the core's PostgreSQL on `data-quality-db`.
 pub const DATABASE_PORT: u16 = 5432;
@@ -29,7 +35,13 @@ pub trait Provision {
     /// `/opt/quality-data/<module>/secrets`.
     fn secrets_dir(&self, module: &str) -> PathBuf;
     /// The secret file `name`, made unless it exists, owned by `uid`.
-    fn ensure_secret(&self, module: &str, name: &str, bytes: u32, uid: u32) -> Result<(), String>;
+    fn ensure_secret(
+        &self,
+        module: &str,
+        name: &str,
+        content: SecretContent,
+        uid: u32,
+    ) -> Result<(), String>;
     fn secret(&self, module: &str, name: &str) -> Result<Secret, String>;
     /// `<name>.next` with a new value, unless one is there (rotation).
     fn stage_next(&self, module: &str, name: &str, bytes: u32) -> Result<(), String>;
@@ -146,7 +158,7 @@ pub fn provision(
     let uid = m.secrets.uid;
     save("secrets")?;
     for g in &m.secrets.generate {
-        p.ensure_secret(&m.name, &g.name, g.bytes, uid)?;
+        p.ensure_secret(&m.name, &g.name, g.content(), uid)?;
     }
     let mut env: Vec<(&str, String)> = Vec::new();
     if provides_anything(m) {
@@ -155,7 +167,7 @@ pub fn provision(
     }
     if let Some(role) = m.database_role() {
         save("database")?;
-        p.ensure_secret(&m.name, DATABASE_PASSWORD, SECRET_BYTES, uid)?;
+        p.ensure_secret(&m.name, DATABASE_PASSWORD, ISSUED, uid)?;
         let password = p.secret(&m.name, DATABASE_PASSWORD)?;
         let dbs: Vec<String> = m.created_databases().map(|d| d.name.clone()).collect();
         p.create_database(&role, &password, &dbs)?;
@@ -191,10 +203,10 @@ fn clients(
 ) -> Result<Clients, String> {
     let uid = m.secrets.uid;
     if oidc.people.is_some() {
-        p.ensure_secret(&m.name, OIDC_PEOPLE_SECRET, SECRET_BYTES, uid)?;
+        p.ensure_secret(&m.name, OIDC_PEOPLE_SECRET, ISSUED, uid)?;
     }
     if oidc.machine.is_some() {
-        p.ensure_secret(&m.name, OIDC_MACHINE_SECRET, SECRET_BYTES, uid)?;
+        p.ensure_secret(&m.name, OIDC_MACHINE_SECRET, ISSUED, uid)?;
     }
     clients_with(oidc, audiences, |name| p.secret(&m.name, name))
 }

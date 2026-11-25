@@ -9,7 +9,8 @@
 //! - **Rotation** writes `<name>.next` first (reused if a crash left it)
 //!   and renames it over the file later.
 //! - **Content**: random bytes from the operating system, base64url without
-//!   padding and without a newline.
+//!   padding, or a new private key (`ed25519`, `p256`, decision 0012) as
+//!   PKCS#8 in standard base64; never a newline.
 //! - **`.env`** gets only what is not secret, the `QD_*` keys the agent
 //!   owns ([`AGENT_KEYS`]); every other line is kept.
 //! - **The installation's CA** (public) copied to `<module>/ca.crt`
@@ -23,6 +24,7 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use base64::Engine;
+use module_manifest::SecretContent;
 use rand_core::RngCore;
 
 /// The keys of a module's `.env` the agent writes (and rewrites).
@@ -82,6 +84,20 @@ fn random(bytes: u32) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf)
 }
 
+/// A new private key, PKCS#8 DER in standard base64, as the core reads
+/// its OIDC signing keys.
+fn key(content: SecretContent) -> Result<String, String> {
+    use ring::signature::{EcdsaKeyPair, Ed25519KeyPair, ECDSA_P256_SHA256_FIXED_SIGNING};
+    let rng = ring::rand::SystemRandom::new();
+    let pkcs8 = match content {
+        SecretContent::Ed25519 => Ed25519KeyPair::generate_pkcs8(&rng),
+        SecretContent::P256 => EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng),
+        SecretContent::Random { bytes } => return Ok(random(bytes)),
+    }
+    .map_err(|_| "could not generate the key".to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(pkcs8.as_ref()))
+}
+
 fn io<'a>(path: &'a Path, step: &'a str) -> impl FnOnce(std::io::Error) -> String + 'a {
     move |e| format!("{} ({step}): {e}", path.display())
 }
@@ -115,15 +131,22 @@ impl ModuleSecrets {
         Ok(dir)
     }
 
-    /// The file `name` with `bytes` random bytes, unless it exists; then
-    /// owned by `uid`, mode `0400`. Whether it was made now.
-    pub fn ensure(&self, module: &str, name: &str, bytes: u32, uid: u32) -> Result<bool, String> {
+    /// The file `name` with `content`, unless it exists; then owned by
+    /// `uid`, mode `0400`. Whether it was made now.
+    pub fn ensure(
+        &self,
+        module: &str,
+        name: &str,
+        content: SecretContent,
+        uid: u32,
+    ) -> Result<bool, String> {
         let dir = self.ensure_dir(module)?;
         let file = dir.join(name);
         let made = !file.exists();
         if made {
             let tmp = dir.join(format!(".{name}.tmp"));
-            write_new(&tmp, random(bytes).as_bytes())?;
+            let value = key(content).map_err(|e| format!("{}: {e}", file.display()))?;
+            write_new(&tmp, value.as_bytes())?;
             std::fs::rename(&tmp, &file).map_err(io(&file, "rename into place"))?;
         }
         self.give(&dir, &file, uid)?;
