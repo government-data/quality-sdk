@@ -9,6 +9,7 @@ use crate::oidc::Oidc;
 use crate::permissions::Permissions;
 use crate::route::{Auth, Menu, Route};
 use crate::secrets::Secrets;
+use crate::topology::Topology;
 use crate::ManifestError;
 
 /// How long a health check may take when the manifest does not say.
@@ -55,6 +56,10 @@ pub struct Manifest {
     /// Its own actions and managed policies (decision 0009).
     #[serde(default)]
     pub permissions: Option<Permissions>,
+    /// Its machine roles (decision 0013; none: every service runs on the
+    /// master).
+    #[serde(default)]
+    pub topology: Option<Topology>,
     // Sections later steps of decision 0002 define: accepted, not read yet.
     #[serde(default)]
     images: Option<IgnoredAny>,
@@ -62,8 +67,6 @@ pub struct Manifest {
     consumes: Option<IgnoredAny>,
     #[serde(default)]
     config: Option<IgnoredAny>,
-    #[serde(default)]
-    topology: Option<IgnoredAny>,
     #[serde(default)]
     requirements: Option<IgnoredAny>,
 }
