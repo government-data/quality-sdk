@@ -36,6 +36,10 @@ fn mode(p: &Path) -> u32 {
     std::fs::metadata(p).unwrap().permissions().mode() & 0o7777
 }
 
+fn rnd(bytes: u32) -> SecretContent {
+    SecretContent::Random { bytes }
+}
+
 /// The uid these tests run as.
 fn me(root: &Root) -> u32 {
     std::fs::metadata(&root.0).unwrap().uid()
@@ -46,7 +50,7 @@ fn a_file_is_made_once_in_a_folder_0700_with_mode_0400() {
     let root = Root::new("once");
     let s = root.secrets();
     let uid = me(&root);
-    assert!(s.ensure("bi", "secret-key", 32, uid).unwrap());
+    assert!(s.ensure("bi", "secret-key", rnd(32), uid).unwrap());
     let dir = root.module().join("secrets");
     assert_eq!(mode(&dir), 0o700);
     let file = dir.join("secret-key");
@@ -60,7 +64,7 @@ fn a_file_is_made_once_in_a_folder_0700_with_mode_0400() {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')));
     // An existing file is never replaced.
-    assert!(!s.ensure("bi", "secret-key", 64, uid).unwrap());
+    assert!(!s.ensure("bi", "secret-key", rnd(64), uid).unwrap());
     assert_eq!(s.read("bi", "secret-key").unwrap(), first);
     // Nothing is left aside.
     let names: Vec<String> = std::fs::read_dir(&dir)
@@ -69,7 +73,7 @@ fn a_file_is_made_once_in_a_folder_0700_with_mode_0400() {
         .collect();
     assert_eq!(names, ["secret-key"]);
     // A second file has another value.
-    s.ensure("bi", "other", 32, uid).unwrap();
+    s.ensure("bi", "other", rnd(32), uid).unwrap();
     assert_ne!(s.read("bi", "other").unwrap(), first);
 }
 
@@ -79,7 +83,7 @@ fn a_temporary_file_left_by_a_crash_is_replaced() {
     let s = root.secrets();
     let dir = s.ensure_dir("bi").unwrap();
     std::fs::write(dir.join(".secret-key.tmp"), "half").unwrap();
-    s.ensure("bi", "secret-key", 32, me(&root)).unwrap();
+    s.ensure("bi", "secret-key", rnd(32), me(&root)).unwrap();
     assert_eq!(s.read("bi", "secret-key").unwrap().expose().len(), 43);
     assert!(!dir.join(".secret-key.tmp").exists());
 }
@@ -89,7 +93,7 @@ fn the_owner_is_the_manifests_uid_when_run_as_root() {
     let root = Root::new("owner");
     let s = root.secrets();
     if me(&root) == 0 {
-        s.ensure("bi", "secret-key", 32, 1000).unwrap();
+        s.ensure("bi", "secret-key", rnd(32), 1000).unwrap();
         let file = root.module().join("secrets/secret-key");
         assert_eq!(std::fs::metadata(&file).unwrap().uid(), 1000);
         assert_eq!(
@@ -100,7 +104,7 @@ fn the_owner_is_the_manifests_uid_when_run_as_root() {
         );
     } else {
         let other = me(&root) + 1;
-        let err = s.ensure("bi", "secret-key", 32, other).unwrap_err();
+        let err = s.ensure("bi", "secret-key", rnd(32), other).unwrap_err();
         assert!(err.contains("only root"), "{err}");
     }
 }
@@ -110,7 +114,7 @@ fn a_next_value_is_reused_after_a_crash_then_renamed_over() {
     let root = Root::new("next");
     let s = root.secrets();
     let uid = me(&root);
-    s.ensure("bi", "oidc-people-secret", 32, uid).unwrap();
+    s.ensure("bi", "oidc-people-secret", rnd(32), uid).unwrap();
     let old = s.read("bi", "oidc-people-secret").unwrap();
     assert_eq!(s.read_next("bi", "oidc-people-secret").unwrap(), None);
     s.stage_next("bi", "oidc-people-secret", 32).unwrap();
@@ -194,7 +198,7 @@ fn the_ca_is_copied_public() {
 fn no_value_is_printed_or_named_in_an_error() {
     let root = Root::new("quiet");
     let s = root.secrets();
-    s.ensure("bi", "secret-key", 32, me(&root)).unwrap();
+    s.ensure("bi", "secret-key", rnd(32), me(&root)).unwrap();
     let value = s.read("bi", "secret-key").unwrap();
     assert_eq!(format!("{value:?}"), "[secret]");
     // Every error names the file and the step, never the content.
@@ -213,4 +217,45 @@ fn no_value_is_printed_or_named_in_an_error() {
         std::fs::Permissions::from_mode(0o700),
     )
     .unwrap();
+}
+
+#[test]
+fn a_key_is_pkcs8_base64_that_parses_as_its_kind_and_is_kept() {
+    use base64::engine::general_purpose::STANDARD;
+    use ring::signature::{EcdsaKeyPair, Ed25519KeyPair, ECDSA_P256_SHA256_FIXED_SIGNING};
+    let root = Root::new("keys");
+    let s = root.secrets();
+    let uid = me(&root);
+    assert!(s.ensure("bi", "ed", SecretContent::Ed25519, uid).unwrap());
+    assert!(s.ensure("bi", "es", SecretContent::P256, uid).unwrap());
+    let dir = root.module().join("secrets");
+    for name in ["ed", "es"] {
+        assert_eq!(mode(&dir.join(name)), 0o400, "{name}");
+    }
+    let der = |name: &str| {
+        let text = s.read("bi", name).unwrap().expose().to_string();
+        assert!(!text.contains(['\n', '\r']), "{name}");
+        STANDARD.decode(text).unwrap()
+    };
+    let ed = der("ed");
+    Ed25519KeyPair::from_pkcs8_maybe_unchecked(&ed).unwrap();
+    assert!(EcdsaKeyPair::from_pkcs8(
+        &ECDSA_P256_SHA256_FIXED_SIGNING,
+        &ed,
+        &ring::rand::SystemRandom::new()
+    )
+    .is_err());
+    let es = der("es");
+    EcdsaKeyPair::from_pkcs8(
+        &ECDSA_P256_SHA256_FIXED_SIGNING,
+        &es,
+        &ring::rand::SystemRandom::new(),
+    )
+    .unwrap();
+    assert!(Ed25519KeyPair::from_pkcs8_maybe_unchecked(&es).is_err());
+    // A file that exists is kept, whatever kind is asked.
+    assert!(!s.ensure("bi", "ed", SecretContent::Ed25519, uid).unwrap());
+    assert!(!s.ensure("bi", "es", rnd(32), uid).unwrap());
+    assert_eq!(der("ed"), ed);
+    assert_eq!(der("es"), es);
 }

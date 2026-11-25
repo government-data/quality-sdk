@@ -9,7 +9,7 @@ use super::provision::{Progress, Provision};
 use crate::api::modules::{AuditEvent, Clients, ClientsAnswer};
 use crate::host::Features;
 use crate::module_secrets::Secret;
-use module_manifest::Manifest;
+use module_manifest::{Manifest, SecretContent};
 
 #[derive(Debug, Default)]
 pub(crate) struct FakeProvision {
@@ -85,11 +85,17 @@ impl Provision for FakeProvision {
     fn secrets_dir(&self, module: &str) -> PathBuf {
         PathBuf::from(format!("/opt/quality-data/{module}/secrets"))
     }
-    fn ensure_secret(&self, module: &str, name: &str, bytes: u32, _uid: u32) -> Result<(), String> {
+    fn ensure_secret(
+        &self,
+        module: &str,
+        name: &str,
+        content: SecretContent,
+        _uid: u32,
+    ) -> Result<(), String> {
         let key = (module.to_string(), name.to_string());
         if !self.secrets.borrow().contains_key(&key) {
             *self.counter.borrow_mut() += 1;
-            let value = format!("fake-{name}-{bytes}-{}", self.counter.borrow());
+            let value = format!("fake-{name}-{content:?}-{}", self.counter.borrow());
             self.secrets.borrow_mut().insert(key, value);
         }
         Ok(())
@@ -101,7 +107,7 @@ impl Provision for FakeProvision {
     }
     fn stage_next(&self, module: &str, name: &str, bytes: u32) -> Result<(), String> {
         let next = format!("{name}.next");
-        self.ensure_secret(module, &next, bytes, 0)
+        self.ensure_secret(module, &next, SecretContent::Random { bytes }, 0)
     }
     fn read_next(&self, module: &str, name: &str) -> Result<Option<Secret>, String> {
         Ok(self
