@@ -251,7 +251,7 @@ fn validate_data(d: &Data) -> Result<(), ManifestError> {
                 v.name, v.path
             )));
         }
-        if v.backup == Backup::Replica && !v.critical {
+        if v.backup() == Backup::Replica && !v.critical {
             return Err(invalid(format!(
                 "data.volumes {}: backup: replica needs critical: true (a piece that is not critical has no backup)",
                 v.name
