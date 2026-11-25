@@ -6,6 +6,9 @@
 # - the master's web (443: the web, the join) and internal (9443: renewal,
 #   the engine port, the core's internal routes) entry points from both
 #   clusters;
+# - the master's lakegate entry point (9444: the core's lake check, which
+#   the lake's gate asks before each request) from the lake only (decision
+#   0013);
 # - the Trino coordinator's HTTP port (discovery) on the master from the
 #   worker; the worker's HTTP port from the master;
 # - the lake's gate (S3, the Iceberg REST catalog) and its admin adapter
@@ -29,6 +32,7 @@ locals {
     "trino-worker-web"      = { from = "trino-worker", to = "master", port = var.ports.web }
     "lake-internal"         = { from = "lake", to = "master", port = var.ports.internal }
     "trino-worker-internal" = { from = "trino-worker", to = "master", port = var.ports.internal }
+    "lake-lakegate"         = { from = "lake", to = "master", port = var.ports.lakegate }
     "worker-coordinator"    = { from = "trino-worker", to = "master", port = var.ports.coordinator }
     "master-worker"         = { from = "master", to = "trino-worker", port = var.ports.worker }
     "master-lake-gate"      = { from = "master", to = "lake", port = var.ports.lake_gate }
