@@ -255,6 +255,8 @@ check "the lake's STS issuer's keys: 16 and 32 bytes base64url, 0400, the API's 
 check "the OIDC signing keys: PKCS#8 in base64, Ed25519 and P-256, no newline, 0400" bash -c \
   "base64 -d '$MOD/secrets/oidc-signing-key' | openssl pkey -inform DER -noout -text | grep -q ED25519 &&
    base64 -d '$MOD/secrets/oidc-signing-key-es256' | openssl pkey -inform DER -noout -text | grep -q prime256v1 &&
+   base64 -d '$MOD/secrets/oidc-signing-key' | openssl pkcs8 -nocrypt -inform DER >/dev/null &&
+   base64 -d '$MOD/secrets/oidc-signing-key-es256' | openssl pkcs8 -nocrypt -inform DER >/dev/null &&
    test \$(wc -l <'$MOD/secrets/oidc-signing-key') = 0 &&
    test \$(wc -l <'$MOD/secrets/oidc-signing-key-es256') = 0 &&
    test $(mode "$MOD/secrets/oidc-signing-key") = 400 &&

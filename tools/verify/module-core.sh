@@ -137,7 +137,7 @@ EOF
   # core's package passes them: no key set by hand.
   # shellcheck source=/dev/null
   source <(sed -n '/^core_secret() {/,/^}/p' "$SDK_ROOT/packaging/install.sh")
-  mkdir -p "$WORK/secrets"
+  mkdir -p "$WORK/secrets" && chmod 0755 "$WORK/secrets" # as the installer's secrets/
   core_secret ed25519 >"$WORK/secrets/oidc-signing-key"
   core_secret p256 >"$WORK/secrets/oidc-signing-key-es256"
   as_root "chown 65532:65532 '$WORK/secrets'/* && chmod 0400 '$WORK/secrets'/*"

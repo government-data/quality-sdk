@@ -357,8 +357,12 @@ core_secret() { # core_secret KIND: random:<bytes> | ed25519 | p256, on stdout
     random:*) openssl rand -base64 "${1#random:}" | tr '+/' '-_' | tr -d '=\n' ;;
     # PKCS#8 DER in standard base64, as `server oidc-keygen` prints them.
     ed25519) openssl genpkey -algorithm ed25519 -outform DER | base64 | tr -d '\n' ;;
+    # genpkey's DER for EC is SEC1 (not PKCS#8) with the curve repeated
+    # inside, which the core's ring refuses: `pkcs8 -topk8` gives PKCS#8
+    # with the curve in the algorithm only, as ring makes it.
     p256) openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 \
-      -pkeyopt ec_param_enc:named_curve -outform DER | base64 | tr -d '\n' ;;
+      -pkeyopt ec_param_enc:named_curve | openssl pkcs8 -topk8 -nocrypt -outform DER |
+      base64 | tr -d '\n' ;;
   esac
 }
 CORE_SECRETS=(
