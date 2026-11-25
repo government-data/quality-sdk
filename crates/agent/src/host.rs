@@ -62,7 +62,9 @@ pub trait Compose {
 
 /// The database: back up, check the backup, restore.
 pub trait Database {
-    fn back_up(&self) -> Result<PathBuf, String>;
+    /// The databases and the modules' critical data, and the replicated
+    /// volumes in `dump` (those with no replica, decision 0012).
+    fn back_up(&self, dump: &[Replica]) -> Result<PathBuf, String>;
     fn restore(&self, backup: &Path) -> Result<(), String>;
 }
 
@@ -257,8 +259,8 @@ impl Host for AgentHost {
     fn report_replica_refused(&self, outcome: &Outcome) {
         self.adapters.cloud.report_replica_refused(outcome);
     }
-    fn back_up(&self) -> Result<PathBuf, String> {
-        self.adapters.database.back_up()
+    fn back_up(&self, dump: &[Replica]) -> Result<PathBuf, String> {
+        self.adapters.database.back_up(dump)
     }
     fn save_package(&self, module: &str, version: &str) -> Result<(PathBuf, Vec<String>), String> {
         self.adapters.packages.save(module, version)

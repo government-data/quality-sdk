@@ -24,6 +24,7 @@ use std::path::{Path, PathBuf};
 use crate::command::{Cmd, Runner};
 use crate::compose;
 use crate::module_data::ModuleData;
+use updater::engine::Replica;
 
 /// How many backups are kept.
 pub const KEEP: usize = 10;
@@ -171,7 +172,7 @@ impl Postgres {
     /// Every database dumped into `dir` and read back whole, the modules'
     /// critical data beside them, then the databases' names written: how
     /// many databases.
-    fn dump_into(&self, dir: &Path) -> Result<usize, String> {
+    fn dump_into(&self, dir: &Path, dump: &[Replica]) -> Result<usize, String> {
         let databases = self.databases()?;
         let globals = r#"pg_dumpall -U "$POSTGRES_USER" --globals-only"#;
         self.run(
@@ -185,7 +186,7 @@ impl Postgres {
             self.run(&self.in_database(dump, &[db])?.stdout(&file))?;
             self.check_dump(&file)?;
         }
-        let pieces = self.data.back_up_into(dir, &databases)?;
+        let pieces = self.data.back_up_into(dir, &databases, dump)?;
         tracing::info!(pieces, "module data backed up");
         let list = format!("{}\n", databases.join("\n"));
         std::fs::write(dir.join("databases"), list)
@@ -195,9 +196,9 @@ impl Postgres {
 }
 
 impl crate::host::Database for Postgres {
-    /// Every database dumped and read back whole, or no backup (and no
-    /// update).
-    fn back_up(&self) -> Result<PathBuf, String> {
+    /// Every database dumped and read back whole, with the modules' data
+    /// and the volumes in `dump`, or no backup (and no update).
+    fn back_up(&self, dump: &[Replica]) -> Result<PathBuf, String> {
         use std::os::unix::fs::DirBuilderExt;
         let name = chrono::Utc::now().format(NAME).to_string();
         let dir = self.backups.join(&name);
@@ -207,7 +208,7 @@ impl crate::host::Database for Postgres {
             .mode(0o700)
             .create(&dir)
             .map_err(|e| format!("{}: {e}", dir.display()))?;
-        let dumped = self.dump_into(&dir);
+        let dumped = self.dump_into(&dir, dump);
         if dumped.is_err() {
             // Not a backup: nothing of it is kept.
             let _ = std::fs::remove_dir_all(&dir);

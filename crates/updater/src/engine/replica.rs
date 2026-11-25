@@ -1,8 +1,10 @@
-//! A critical volume whose backup is a replica in sync (decision 0002):
-//! the update goes ahead only if the core says every such replica is in
-//! sync. It is asked before entering maintenance, so a lake with no
-//! replica is not drained for nothing, and again just before the backup.
-//! Asking changes nothing, so a step can run twice.
+//! A critical volume whose backup is a replica (decision 0002, as decision
+//! 0012 amends it): a replica in sync is the volume's backup; with no
+//! replica configured the volume is dumped and checked as any critical
+//! piece; a configured replica not in sync refuses the update. It is
+//! asked before entering maintenance, so a lake whose replica is behind is
+//! not drained for nothing, and again just before the backup. Asking
+//! changes nothing, so a step can run twice.
 
 use super::{finish, leave_maintenance, outcome, Host};
 use crate::state::{OutcomeKind, Phase, State, Target};
@@ -55,25 +57,30 @@ pub struct Replica {
     pub state: ReplicaState,
 }
 
-/// Why the update may not go ahead: the first replica not in sync, or that
-/// it could not be asked. `None`: every one is in sync (or there is none).
-pub(super) fn not_in_sync(host: &dyn Host) -> Option<String> {
-    match host.replicas() {
-        Ok(replicas) => replicas
-            .iter()
-            .find(|r| r.state != ReplicaState::InSync)
-            .map(|r| {
-                format!(
-                    "{}'s volume {} has no replica in sync ({})",
-                    r.module,
-                    r.volume,
-                    r.state.as_str()
-                )
-            }),
-        Err(err) => Some(format!(
-            "whether the replica is in sync is not known ({err})"
-        )),
+/// The volumes with no replica, which the backup dumps (decision 0012),
+/// or why the update may not go ahead: the first replica configured but
+/// not in sync, or that it could not be asked. A configured replica is
+/// never replaced by a dump: `unknown` and a failed call refuse, since
+/// whether a replica exists is not known.
+pub(super) fn to_dump(host: &dyn Host) -> Result<Vec<Replica>, String> {
+    let replicas = host
+        .replicas()
+        .map_err(|err| format!("whether the replica is in sync is not known ({err})"))?;
+    if let Some(r) = replicas
+        .iter()
+        .find(|r| !matches!(r.state, ReplicaState::InSync | ReplicaState::NoReplica))
+    {
+        return Err(format!(
+            "{}'s volume {} has no replica in sync ({})",
+            r.module,
+            r.volume,
+            r.state.as_str()
+        ));
     }
+    Ok(replicas
+        .into_iter()
+        .filter(|r| r.state == ReplicaState::NoReplica)
+        .collect())
 }
 
 /// Refuse the update: back to prepared (leaving maintenance if it was in

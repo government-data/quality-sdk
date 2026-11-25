@@ -50,9 +50,12 @@ pub use validate::RESERVED_MODULE_NAMES;
 /// (decision 0009); an older agent refuses those keys.
 pub const MODULE_ADD_AGENT: &str = "0.2.0";
 
-/// The first agent version that reads `data.volumes[].backup` (decision
-/// 0002): an older agent refuses the key, `dump` or `replica`.
-pub const REPLICA_BACKUP_AGENT: &str = "0.3.0";
+/// The agent version a written `data.volumes[].backup` needs (decision
+/// 0002): 0.3.0 first read the key, `dump` or `replica`, and refused every
+/// update of a volume with no replica; this one dumps it and goes ahead
+/// (decision 0012), so `qsdk publish` warns before such a package reaches
+/// an agent that would refuse.
+pub const REPLICA_BACKUP_AGENT: &str = "0.5.0";
 
 /// The first agent version that reads `secrets.generate[].kind` (decision
 /// 0012 step 2): an older agent refuses the key.
