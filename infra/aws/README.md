@@ -2,7 +2,8 @@
 
 Decision 0001 (internal). Managed resources
 only: S3 (index, packages, reports), ECR (images), KMS (index signature) and
-IAM Roles Anywhere (who may pull). It lives beside the orchestrator's resources
+IAM Roles Anywhere (who may pull), plus the Route 53 records of the public user
+guide (decision 0010, `site.tf`; the hosted zone itself is only read). It lives beside the orchestrator's resources
 in the same account with the `quality-data` prefix and reads, never creates, the
 GitHub OIDC provider they share.
 
@@ -11,7 +12,8 @@ GitHub OIDC provider they share.
 ```bash
 cd infra/aws
 cat > terraform.tfvars <<'EOF'
-github_repo          = "owner/quality-sdk"
+github_repo             = "owner/quality-sdk"
+site_pages_verification = "..."   # see "The user guide's DNS" below
 installations_ca_pem = <<PEM
 -----BEGIN CERTIFICATE-----
 ...the installations' CA certificate (its key stays offline)...
@@ -45,6 +47,48 @@ gh variable set AWS_REGION --repo government-data/core --body us-east-1
 
 Likewise for `government-data/docs` and `government-data/lake-rustfs` with the
 output's `docs` and `lake-rustfs` keys.
+
+## The user guide's DNS (`site.tf`)
+
+The public user guide is served by GitHub Pages at `site_domain`
+(`orquestador.app`). Terraform reads its Route 53 hosted zone (created by the
+domain registration, managed by no Terraform) and manages four records:
+
+- the apex: GitHub Pages' four `A` and four `AAAA` addresses;
+- `www`: a `CNAME` to `<site_github_org>.github.io` (Pages redirects it to the
+  apex);
+- the `TXT` `_github-pages-challenge-<site_github_org>.<site_domain>` that
+  verifies the domain for the organisation. It stays in DNS.
+
+No wildcard (a takeover risk) and no `CAA` (one added later must allow
+`letsencrypt.org`). `site_pages_verification` has no default: an organisation
+owner adds the domain at
+`https://github.com/organizations/<site_github_org>/settings/pages` and copies
+the `TXT` value GitHub shows (there is no API for it) into `terraform.tfvars`.
+After the apply, press "Verify" there.
+
+### Taking the records over from the orchestrator's root (2026-11-25)
+
+The records were created by `knime-orchestador/infra/aws`. The `import`
+blocks in `site.tf` take them over without recreating them; that root forgets
+them first with `removed { lifecycle { destroy = false } }`. In this order:
+
+```bash
+# 1. The orchestrator's root forgets the records (its plan: 4 "will no longer
+#    be managed", "0 to add, 0 to change, 0 to destroy").
+cd knime-orchestador/infra/aws
+AWS_PROFILE=orquestador terraform plan -out forget.plan
+AWS_PROFILE=orquestador terraform apply forget.plan
+
+# 2. This root imports them; www moves to government-data.github.io and the
+#    verification TXT of the old organisation name is replaced by the new one.
+#    Expected: "Plan: 4 to import, 1 to add, 1 to change, 1 to destroy."
+cd quality-sdk/infra/aws
+AWS_PROFILE=orquestador terraform plan -out site.plan
+AWS_PROFILE=orquestador terraform apply site.plan
+```
+
+Once applied, the `import` blocks are no-ops (the records are in this state).
 
 ## Renaming the GitHub organisation
 

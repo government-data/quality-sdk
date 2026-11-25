@@ -12,7 +12,8 @@ installations, from versions published in AWS. One installation is one
 organisation (no tenants) and there are no licenses: an installation may
 update while its SDK enrolment is valid.
 
-- `infra/aws/`: the AWS side, in Terraform (versions, images, who may pull).
+- `infra/aws/`: the AWS side, in Terraform (versions, images, who may pull,
+  and the user guide's DNS records).
 - `crates/`: the SDK in Rust (manifest, update engine, agent, CLI), as the
   decisions add them.
 - `docs/decisions/`: the design. Every change belongs to a decision.
@@ -125,7 +126,9 @@ cargo test -p <crate> --locked
 ## Do not
 
 - Do not add a service a decision does not name: the AWS side is S3, ECR,
-  KMS and IAM Roles Anywhere until a decision says otherwise.
+  KMS and IAM Roles Anywhere, plus the Route 53 records of the public user
+  guide (decision 0010; the hosted zone is only read), until a decision says
+  otherwise.
 - Do not bring back licenses, plans or tenants.
 - Do not commit, quote or link a decision in anything public: code
   comments may name it by number ("decision 0001"), never copy its content.

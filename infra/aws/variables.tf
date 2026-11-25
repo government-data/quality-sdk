@@ -150,3 +150,36 @@ variable "module_publishers" {
     error_message = "Each module_publishers key must be a module of var.modules, repo must be owner/name, and images must be that module's images."
   }
 }
+
+variable "site_domain" {
+  description = "The domain of the public user guide on GitHub Pages (decision 0010). Its Route 53 hosted zone is in this account and is only read."
+  type        = string
+  default     = "orquestador.app"
+}
+
+variable "site_github_org" {
+  description = "The GitHub organisation that publishes the user guide with Pages: www is a CNAME to <site_github_org>.github.io and the verification TXT is _github-pages-challenge-<site_github_org>.<site_domain>."
+  type        = string
+  default     = "government-data"
+  validation {
+    condition     = can(regex("^[A-Za-z0-9](-?[A-Za-z0-9])*$", var.site_github_org))
+    error_message = "site_github_org must be a GitHub organisation name (letters, digits and hyphens), without .github.io."
+  }
+}
+
+variable "site_pages_verification" {
+  description = <<-EOT
+    The value of the TXT record _github-pages-challenge-<site_github_org>.<site_domain>
+    that verifies the domain for the organisation. GitHub shows it to an
+    organisation owner under the organisation's Settings → Pages → Add a
+    domain (https://github.com/organizations/<site_github_org>/settings/pages);
+    there is no API for it. Not a secret, but set it in terraform.tfvars
+    (ignored by git), not in a committed file.
+  EOT
+  type        = string
+  nullable    = false
+  validation {
+    condition     = length(trimspace(var.site_pages_verification)) > 0
+    error_message = "site_pages_verification must be the TXT value GitHub shows in the organisation's Pages settings."
+  }
+}
