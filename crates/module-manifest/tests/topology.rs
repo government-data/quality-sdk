@@ -111,3 +111,19 @@ fn at_most_sixteen_roles() {
     let over: String = (0..=MAX_ROLES).map(role).collect();
     assert!(refused(&over).contains("at most 16 roles"));
 }
+
+#[test]
+fn a_module_with_roles_needs_the_agent_that_tells_them() {
+    let m = Manifest::parse(&manifest(
+        "    - { name: lake, services: [rustfs], strategy: all }\n",
+    ))
+    .unwrap();
+    assert_eq!(
+        m.agent_needed().map(|v| v.to_string()).as_deref(),
+        Some(module_manifest::ROLES_AGENT)
+    );
+    assert!(Manifest::parse("name: docs\nversion: 0.2.0\n")
+        .unwrap()
+        .agent_needed()
+        .is_none());
+}

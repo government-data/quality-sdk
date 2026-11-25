@@ -7,6 +7,7 @@ use updater::engine::Installed;
 use updater::state::Modules;
 
 use super::{DockerCompose, Record};
+use crate::module_roles::ModuleRole;
 
 impl DockerCompose {
     fn record_or_error(&self) -> Result<Record, String> {
@@ -69,6 +70,25 @@ impl crate::host::Compose for DockerCompose {
     /// The module's `module.yaml`, where its package was put.
     fn manifest(&self, module: &str) -> Result<Option<Manifest>, String> {
         crate::manifests::read(&self.install, module)
+    }
+
+    /// From `current/compose.yml` and the `.env` beside it; a file that
+    /// does not read tells no role (logged).
+    fn roles(&self, module: &str, manifest: &Manifest) -> Vec<ModuleRole> {
+        if manifest.topology.is_none() {
+            return Vec::new();
+        }
+        let dir = self.install.join(module);
+        let read = |path: std::path::PathBuf| {
+            std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
+        };
+        match read(dir.join("current/compose.yml")).and_then(|c| Ok((c, read(dir.join(".env"))?))) {
+            Ok((compose, env)) => crate::module_roles::derive(module, manifest, &compose, &env),
+            Err(err) => {
+                tracing::warn!(%module, "its roles are not told: {err}");
+                Vec::new()
+            }
+        }
     }
 
     /// Every module's health: its containers' Compose healthchecks, the

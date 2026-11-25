@@ -21,6 +21,7 @@ pub mod installed_module;
 pub mod manifests;
 pub mod module_data;
 pub mod module_database;
+pub mod module_roles;
 pub mod module_secrets;
 pub mod modules;
 pub mod package_archive;
