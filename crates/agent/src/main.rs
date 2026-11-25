@@ -217,9 +217,10 @@ fn run(paths: &Paths, every: Duration, once: bool) -> ExitCode {
     let started = agent::service::lock(paths).and_then(|lock| {
         let host = agent::service::assemble(paths)?;
         let renewer = agent::service::renewer(paths)?;
-        Ok((lock, host, renewer))
+        let registry = agent::service::registry(paths)?;
+        Ok((lock, host, renewer, registry))
     });
-    let (_lock, host, renewer) = match started {
+    let (_lock, host, renewer, registry) = match started {
         Ok(started) => started,
         Err(err) => {
             eprintln!("error: {err}");
@@ -235,10 +236,16 @@ fn run(paths: &Paths, every: Duration, once: bool) -> ExitCode {
     // Before each round: renew the internal certificate when due, and tell
     // quality-data the installed modules until it has heard them (at start,
     // and again after a failure), and send the audit events it has not
-    // taken yet.
+    // taken yet; hand the clusters' registry token when due, and at once
+    // after quality-data was told the modules anew (decision 0013).
+    let supply = agent::registry::Supply::default();
     let mut before = || {
         agent::service::renew(&renewer, chrono::Utc::now());
         host.tell_modules_if_untold();
+        if host.take_told() {
+            supply.again_now();
+        }
+        agent::service::supply_registry(&supply, &registry, chrono::Utc::now());
         agent::service::flush_audit(paths);
         agent::service::disable_left_clients(paths);
     };

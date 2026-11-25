@@ -13,6 +13,7 @@
 //! | `GET /updater/v1/version` | the version part of `healthy`; its `features` (decision 0009) |
 //! | `PUT /updater/v1/modules` | which modules are installed (after a start, and when the agent starts) |
 //! | `POST /updater/v1/request` | "Update now" for a person on the server (`update`, decision 0007) |
+//! | `PUT /updater/v1/registry` | the registry's token for the clusters ([`crate::registry`], decision 0013) |
 //! | a module's clients, purge and audit | [`modules`] (decision 0009) |
 
 use std::time::Duration;
@@ -118,6 +119,24 @@ impl UpdaterApi {
         Err(format!("{what}: quality-data answered {} {why}", r.status)
             .trim_end()
             .to_string())
+    }
+}
+
+impl crate::registry::TokenSink for UpdaterApi {
+    fn features(&self) -> Result<Features, String> {
+        Api::features(self)
+    }
+
+    /// The body holds the password: it is sent, never logged, and an
+    /// error says only the call and quality-data's answer.
+    fn put_registry(&self, t: &crate::registry::RegistryToken) -> Result<(), String> {
+        let body = json!({
+            "host": t.host,
+            "username": t.username,
+            "password": t.password,
+            "expires_at": t.expires_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        });
+        self.call("PUT", "/registry", Some(&body)).map(|_| ())
     }
 }
 
