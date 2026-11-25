@@ -27,10 +27,14 @@ struct Fake {
     scheduled: Cell<u64>,
     /// What fails: "package" (every one), "package:<module>", "backup",
     /// "put:<package path>", "start:1.3.0", "healthy:1.3.0",
-    /// "healthy:previous", "restore"…
+    /// "healthy:previous", "restore", "core:stuck" (the core keeps
+    /// answering the version it had)…
     fails: RefCell<HashSet<&'static str>>,
     /// The version brought up.
     up: RefCell<String>,
+    /// The version the core answers: its own module's, which a platform
+    /// version may leave as it was (decision 0014).
+    core: RefCell<String>,
     calls: RefCell<Vec<String>>,
     /// Every `put_version`, with the modules it was given.
     put: RefCell<Vec<(String, Modules)>>,
@@ -53,6 +57,7 @@ impl Fake {
                 .timestamp(),
         );
         *f.up.borrow_mut() = "1.2.0".into();
+        *f.core.borrow_mut() = "1.2.0".into();
         *f.cloud.borrow_mut() = Some(Ok(offer("1.3.0")));
         f
     }
@@ -250,6 +255,10 @@ impl Host for Fake {
             .borrow_mut()
             .push((version.into(), modules.clone()));
         *self.up.borrow_mut() = version.into();
+        let stuck = self.fails_at("core:stuck");
+        if let (false, Some(core)) = (stuck, modules.get("quality-data")) {
+            *self.core.borrow_mut() = core.version.clone();
+        }
         Ok(())
     }
     fn provision(&self, module: &str) -> Result<(), String> {
@@ -270,9 +279,10 @@ impl Host for Fake {
     fn healthy(&self, version: Option<&str>) -> Result<(), String> {
         let v = self.up.borrow().clone();
         self.note(format!("healthy:{v}"));
+        let core = self.core.borrow().clone();
         if let Some(expected) = version {
-            if expected != v {
-                return Err(format!("{v} answers"));
+            if expected != core {
+                return Err(format!("{core} answers, not {expected}"));
             }
         }
         let key = if version.is_some() {

@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use super::{Module, ModulePackage, Modules, Previous, SavedPackage, Target};
 
 /// The only module the older fields name.
-const LEGACY_MODULE: &str = "quality-data";
+const LEGACY_MODULE: &str = super::CORE_MODULE;
 
 #[derive(Serialize, Deserialize)]
 pub(super) struct TargetFile {

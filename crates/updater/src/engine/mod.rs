@@ -146,7 +146,8 @@ pub trait Host {
     /// it twice changes nothing.
     fn provision(&self, module: &str) -> Result<(), String>;
     fn start(&self) -> Result<(), String>;
-    /// That it answers; with `version`, that it is that one.
+    /// That it answers; with `version`, that quality-data answers that
+    /// version (its own module's, decision 0014).
     fn healthy(&self, version: Option<&str>) -> Result<(), String>;
     fn restore_database(&self, backup: &Path) -> Result<(), String>;
     /// The new package's commands, in the system.
