@@ -1,11 +1,11 @@
 //! Development only, for `tools/verify/module-docs.sh`: `qd module
 //! add|remove` (decision 0002 step 9) with the installation's real Docker
 //! Compose, package files and routes, and the signed index replaced by a
-//! local package and a local image (no AWS). Never shipped: `qd module` takes
+//! local package and its local images (no AWS). Never shipped: `qd module` takes
 //! a module only from the signed index.
 //!
 //! ```text
-//! module_offline --root DIR [--api URL [--connect IP:PORT]] add NAME PACKAGE.tar.gz IMAGE=REF
+//! module_offline --root DIR [--api URL [--connect IP:PORT]] add NAME PACKAGE.tar.gz IMAGE=REF...
 //! module_offline --root DIR [--api URL [--connect IP:PORT]] remove|rotate NAME
 //! module_offline --root DIR [--api URL [--connect IP:PORT]] purge NAME --confirm NAME
 //! ```
@@ -43,9 +43,9 @@ struct Offline {
     provisioner: Provisioner,
     /// quality-data's `updater/v1`, with `--api`.
     api: Option<UpdaterApi>,
-    /// The module's package and its one image, for `add`.
+    /// The module's package and its images, for `add`.
     package: PathBuf,
-    image: (String, String),
+    images: Vec<(String, String)>,
 }
 
 impl ModuleHost for Offline {
@@ -65,7 +65,7 @@ impl ModuleHost for Offline {
             .ok_or("no module.yaml")?;
         let module = Module {
             version: manifest.version.to_string(),
-            images: [self.image.clone()].into(),
+            images: self.images.iter().cloned().collect(),
         };
         Ok(Offer {
             version: version.into(),
@@ -192,15 +192,17 @@ fn main() -> ExitCode {
         packages: PackageFiles::new(&paths),
         paths,
         package: PathBuf::new(),
-        image: (String::new(), String::new()),
+        images: Vec::new(),
     };
     let done = match rest {
-        [action, name, package, image] if action == "add" => {
-            let Some((n, r)) = image.split_once('=') else {
-                return usage();
-            };
+        [action, name, package, images @ ..] if action == "add" && !images.is_empty() => {
+            for image in images {
+                let Some((n, r)) = image.split_once('=') else {
+                    return usage();
+                };
+                host.images.push((n.to_string(), r.to_string()));
+            }
             host.package = PathBuf::from(package);
-            host.image = (n.to_string(), r.to_string());
             add(&host, name)
         }
         [action, name] if action == "remove" => remove(&host, name),
@@ -227,7 +229,7 @@ fn main() -> ExitCode {
 fn usage() -> ExitCode {
     eprintln!(
         "usage: module_offline --root DIR [--api URL [--connect IP:PORT]] add NAME \
-         PACKAGE.tar.gz IMAGE=REF\n       \
+         PACKAGE.tar.gz IMAGE=REF...\n       \
          module_offline --root DIR [--api URL [--connect IP:PORT]] remove|rotate NAME\n       \
          module_offline --root DIR [--api URL [--connect IP:PORT]] purge NAME --confirm NAME"
     );
