@@ -1,0 +1,49 @@
+# An invented module for tools/verify/module-oidc.sh and module-purge.sh
+# (decision 0009, V3 and V4): every key of point 1, a small OIDC relying
+# party as its service (rp.py). Never published.
+name: qsvbi
+version: 1.0.0
+requires:
+  capabilities:
+    - { name: sql-query, version: 1, protocols: [trino-client-protocol] }
+route: { path: /bi, service: web, port: 8080 }
+auth: oidc
+menu:
+  label: { en: Analytics, es: Análisis }
+  path: { en: /bi/, es: /bi/ }
+  requires: "qsvbi:Author"
+oidc:
+  people:
+    redirect_paths: [/bi/cb]
+    logout_paths: [/bi/]
+    alg: ES256
+    role_claim:
+      name: bi_roles
+      values:
+        author: "qsvbi:Author"
+        admin: "qsvbi:Administer"
+  machine:
+    capabilities: [sql-query]
+secrets:
+  uid: 1000
+  generate:
+    - { name: secret-key, bytes: 32, critical: true }
+data:
+  databases:
+    - { name: qsvbi, create: true, critical: true }
+  volumes:
+    - { name: data, service: web, path: /data, critical: true }
+  keys:
+    - { path: config/settings.txt, critical: true }
+permissions:
+  actions:
+    - name: "qsvbi:Author"
+      description: { en: Create charts, es: Crear gráficos }
+    - name: "qsvbi:Administer"
+      description: { en: Administer it, es: Administrarlo }
+  policies:
+    - name: "qsvbi:Authors"
+      description: { en: Authors, es: Autores }
+      actions: ["qsvbi:Author"]
+health:
+  services: [web]
