@@ -83,7 +83,10 @@ impl crate::host::Compose for DockerCompose {
             std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
         };
         match read(dir.join("current/compose.yml")).and_then(|c| Ok((c, read(dir.join(".env"))?))) {
-            Ok((compose, env)) => crate::module_roles::derive(module, manifest, &compose, &env),
+            Ok((compose, env)) => {
+                let package = crate::role_files::Dir(dir.join("current"));
+                crate::module_roles::derive(module, manifest, &compose, &env, &package)
+            }
             Err(err) => {
                 tracing::warn!(%module, "its roles are not told: {err}");
                 Vec::new()
