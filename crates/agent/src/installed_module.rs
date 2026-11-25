@@ -22,6 +22,8 @@ impl Features {
     pub const MODULE_PERMISSIONS: &'static str = "module-permissions";
     /// `POST /updater/v1/audit`.
     pub const AGENT_AUDIT: &'static str = "agent-audit";
+    /// `PUT /updater/v1/registry` (decision 0013).
+    pub const REGISTRY_CREDENTIALS: &'static str = "registry-credentials";
 
     pub fn has(&self, feature: &str) -> bool {
         self.0.contains(feature)

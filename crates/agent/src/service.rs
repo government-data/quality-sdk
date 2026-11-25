@@ -80,6 +80,40 @@ pub fn renew(renewer: &Renewer, now: chrono::DateTime<chrono::Utc>) {
     }
 }
 
+/// What hands the registry's token to quality-data (decision 0013): ECR
+/// with the installation's credentials, and `updater/v1`.
+pub fn registry(paths: &Paths) -> Result<(crate::aws::ecr::Ecr, UpdaterApi), String> {
+    let config = Config::load(&paths.config_file())?;
+    let settings = config
+        .api
+        .as_ref()
+        .ok_or_else(|| format!("{}: no [api] url", paths.config_file().display()))?;
+    let api = UpdaterApi::from_settings(settings, paths)?;
+    Ok((AwsCloud::from_config(&config, paths)?.ecr, api))
+}
+
+/// Hand the registry's token when due, and say what happened (never the
+/// token).
+pub fn supply_registry(
+    supply: &crate::registry::Supply,
+    registry: &(crate::aws::ecr::Ecr, UpdaterApi),
+    now: chrono::DateTime<chrono::Utc>,
+) {
+    use crate::registry::Supplied;
+    match supply.supply_if_due(now, &registry.0, &registry.1) {
+        Supplied::NotDue => {}
+        Supplied::Handed(expires_at) => {
+            tracing::info!(%expires_at, "the registry's token was handed to quality-data");
+        }
+        Supplied::NotOffered => {
+            tracing::debug!("quality-data takes no registry token yet");
+        }
+        Supplied::Failed(err) => {
+            tracing::warn!("the registry's token was not handed to quality-data: {err}");
+        }
+    }
+}
+
 /// The audit events the core has not taken yet, sent in order (decision
 /// 0009): at start and before each round while any waits.
 pub fn flush_audit(paths: &Paths) {
