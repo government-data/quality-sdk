@@ -10,7 +10,8 @@
 //!    `/var/lib/quality-data/backups/purge/<module>-<time>/`, `complete`
 //!    written last; if a critical piece cannot be backed up, nothing is
 //!    deleted.
-//! 3. `delete`: `DELETE /updater/v1/modules/{module}`.
+//! 3. `delete`: the core told the installed modules (it refuses to purge
+//!    one it still lists), then `DELETE /updater/v1/modules/{module}`.
 //! 4. `drop`: its databases, then its role.
 //! 5. `files`: its Compose volumes, then `/opt/quality-data/<module>/`.
 //! 6. `done`: audit `ModulePurged`, the progress file removed.
@@ -104,7 +105,12 @@ fn run_step(
             warnings.push(format!("{module}'s backup is {}", dir.display()));
             Ok(())
         }
-        "delete" => p.delete_module(module),
+        // The core refuses to purge a module it still lists as installed
+        // (V4): it is told the modules first, as `remove` tells it.
+        "delete" => host
+            .tell_core()
+            .map_err(|e| format!("quality-data was not told the modules: {e}"))
+            .and_then(|()| p.delete_module(module)),
         "drop" => match need()?.database_role() {
             Some(role) => {
                 let dbs: Vec<String> = need()?
