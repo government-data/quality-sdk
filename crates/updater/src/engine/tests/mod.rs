@@ -205,8 +205,11 @@ impl Host for Fake {
             .pop_front()
             .unwrap_or_else(|| Ok(Vec::new()))
     }
-    fn back_up(&self) -> Result<PathBuf, String> {
+    fn back_up(&self, dump: &[Replica]) -> Result<PathBuf, String> {
         self.note("back_up");
+        for r in dump {
+            self.note(format!("dump:{}:{}", r.module, r.volume));
+        }
         if self.fails_at("backup") {
             return Err("pg_restore --list failed".into());
         }

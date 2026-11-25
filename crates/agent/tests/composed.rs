@@ -14,7 +14,7 @@ use agent::paths::Paths;
 use chrono::{DateTime, TimeZone, Utc};
 use module_manifest::Manifest;
 use updater::engine::{
-    advance, CloudError, Drain, Installed, Offer, OfferedPackage, ReplicaState, Who,
+    advance, CloudError, Drain, Installed, Offer, OfferedPackage, Replica, ReplicaState, Who,
 };
 use updater::policy::Orders;
 use updater::state::{Module, Modules, Outcome, OutcomeKind, Phase, State};
@@ -128,7 +128,7 @@ impl Compose for FakeCompose {
 
 struct FakeDatabase(Rc<World>);
 impl Database for FakeDatabase {
-    fn back_up(&self) -> Result<PathBuf, String> {
+    fn back_up(&self, _dump: &[Replica]) -> Result<PathBuf, String> {
         self.0.note("database:back_up");
         Ok("/var/lib/quality-data/backups/1".into())
     }

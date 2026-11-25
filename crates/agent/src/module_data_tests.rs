@@ -99,7 +99,7 @@ fn without_a_record_or_a_manifest_there_is_nothing_to_back_up() {
     let r = root("none");
     let dir = backup_dir(&r);
     let data = ModuleData::new(&Paths::under(&r), HELPER);
-    assert_eq!(data.back_up_into(&dir, &[]).unwrap(), 0);
+    assert_eq!(data.back_up_into(&dir, &[], &[]).unwrap(), 0);
     assert_eq!(std::fs::read_to_string(dir.join(LIST)).unwrap(), "[]");
     data.restore(&r).unwrap();
     std::fs::remove_dir_all(r).unwrap();
@@ -110,7 +110,10 @@ fn critical_volumes_and_keys_are_backed_up_and_checked() {
     let r = root("back-up");
     let dir = backup_dir(&r);
     let (data, cp) = installed(&r, archive());
-    assert_eq!(data.back_up_into(&dir, &["quality".into()]).unwrap(), 2);
+    assert_eq!(
+        data.back_up_into(&dir, &["quality".into()], &[]).unwrap(),
+        2
+    );
     let ran = cp.ran.borrow();
     assert_eq!(ran.len(), 1);
     let line = ran[0].line();
@@ -149,10 +152,57 @@ fn a_volume_backed_up_by_a_replica_is_not_copied() {
     let file = r.join("opt/quality-data/quality-data/current/module.yaml");
     std::fs::write(file, manifest).unwrap();
     // The key only: the volume is neither copied nor listed.
-    assert_eq!(data.back_up_into(&dir, &["quality".into()]).unwrap(), 1);
+    assert_eq!(
+        data.back_up_into(&dir, &["quality".into()], &[]).unwrap(),
+        1
+    );
     assert!(cp.ran.borrow().is_empty());
     let list: Vec<Piece> = serde_json::from_slice(&std::fs::read(dir.join(LIST)).unwrap()).unwrap();
     assert!(matches!(list.as_slice(), [Piece::Key { .. }]), "{list:?}");
+    std::fs::remove_dir_all(r).unwrap();
+}
+
+#[test]
+fn a_replicated_volume_with_no_replica_is_copied_and_listed() {
+    use updater::engine::{Replica, ReplicaState};
+    let r = root("no-replica");
+    let dir = backup_dir(&r);
+    let (data, cp) = installed(&r, archive());
+    let manifest = MANIFEST.replace(
+        "path: /var/lib/dolt }",
+        "path: /var/lib/dolt, backup: replica }",
+    );
+    let file = r.join("opt/quality-data/quality-data/current/module.yaml");
+    std::fs::write(file, manifest).unwrap();
+    let named = |module: &str, volume: &str| Replica {
+        module: module.into(),
+        volume: volume.into(),
+        state: ReplicaState::NoReplica,
+    };
+    // Another module's volume of the same name is not this one.
+    let other = [named("other", "catalog")];
+    assert_eq!(
+        data.back_up_into(&dir, &["quality".into()], &other)
+            .unwrap(),
+        1
+    );
+    assert!(cp.ran.borrow().is_empty());
+    let dump = [named("quality-data", "catalog")];
+    assert_eq!(
+        data.back_up_into(&dir, &["quality".into()], &dump).unwrap(),
+        2
+    );
+    assert_eq!(cp.ran.borrow().len(), 1);
+    let list: Vec<Piece> = serde_json::from_slice(&std::fs::read(dir.join(LIST)).unwrap()).unwrap();
+    assert_eq!(
+        list[0],
+        Piece::Volume {
+            module: "quality-data".into(),
+            service: "api".into(),
+            path: "/var/lib/dolt".into(),
+            file: "modules/quality-data/volumes/catalog.tar".into(),
+        }
+    );
     std::fs::remove_dir_all(r).unwrap();
 }
 
@@ -161,21 +211,27 @@ fn a_piece_that_cannot_be_backed_up_whole_is_no_backup() {
     let r = root("bad");
     let dir = backup_dir(&r);
     let (data, _) = installed(&r, archive());
-    let err = data.back_up_into(&dir, &["other".into()]).unwrap_err();
+    let err = data.back_up_into(&dir, &["other".into()], &[]).unwrap_err();
     assert_eq!(
         err,
         "the database quality of quality-data is not on the server"
     );
     let whole = archive();
     let (data, _) = installed(&r, whole[..1536].to_vec());
-    let err = data.back_up_into(&dir, &["quality".into()]).unwrap_err();
+    let err = data
+        .back_up_into(&dir, &["quality".into()], &[])
+        .unwrap_err();
     assert!(err.contains("end-of-archive marker"), "{err}");
     let (data, _) = installed(&r, vec![0; 1024]);
-    let err = data.back_up_into(&dir, &["quality".into()]).unwrap_err();
+    let err = data
+        .back_up_into(&dir, &["quality".into()], &[])
+        .unwrap_err();
     assert!(err.contains("holds nothing"), "{err}");
     let (data, _) = installed(&r, archive());
     std::fs::remove_file(r.join("opt/quality-data/quality-data/secrets/a.key")).unwrap();
-    let err = data.back_up_into(&dir, &["quality".into()]).unwrap_err();
+    let err = data
+        .back_up_into(&dir, &["quality".into()], &[])
+        .unwrap_err();
     assert!(err.contains("secrets/a.key"), "{err}");
     std::fs::remove_dir_all(r).unwrap();
 }
@@ -185,7 +241,7 @@ fn a_restore_puts_back_each_key_and_copies_each_volume_s_archive_in() {
     let r = root("restore");
     let dir = backup_dir(&r);
     let (data, cp) = installed(&r, archive());
-    data.back_up_into(&dir, &["quality".into()]).unwrap();
+    data.back_up_into(&dir, &["quality".into()], &[]).unwrap();
     let key = r.join("opt/quality-data/quality-data/secrets/a.key");
     std::fs::write(&key, "changed").unwrap();
     data.restore(&dir).unwrap();
@@ -212,7 +268,7 @@ fn a_volume_is_emptied_by_the_helper_image_through_its_container_s_mounts_first(
     let r = root("empty");
     let dir = backup_dir(&r);
     let (data, cp) = installed(&r, archive());
-    data.back_up_into(&dir, &["quality".into()]).unwrap();
+    data.back_up_into(&dir, &["quality".into()], &[]).unwrap();
     cp.ran.borrow_mut().clear();
     data.restore(&dir).unwrap();
     let lines: Vec<String> = cp.ran.borrow().iter().map(Cmd::line).collect();
@@ -259,7 +315,7 @@ fn a_volume_that_cannot_be_emptied_is_not_restored_over() {
         let r = root("not-emptied");
         let dir = backup_dir(&r);
         let (data, cp) = installed(&r, archive());
-        data.back_up_into(&dir, &["quality".into()]).unwrap();
+        data.back_up_into(&dir, &["quality".into()], &[]).unwrap();
         cp.answers.borrow_mut().insert(0, (rule, answer));
         cp.ran.borrow_mut().clear();
         let err = data.restore(&dir).unwrap_err();
@@ -287,7 +343,7 @@ fn a_critical_generated_secret_is_a_key_restored_with_mode_0400() {
     std::fs::write(module.join("current/module.yaml"), text).unwrap();
     std::fs::write(module.join("secrets/secret-key"), "qs-test-not-real").unwrap();
     std::fs::write(module.join("secrets/scratch-key"), "qs-test-not-real-2").unwrap();
-    data.back_up_into(&dir, &["quality".into()]).unwrap();
+    data.back_up_into(&dir, &["quality".into()], &[]).unwrap();
     let copy = dir.join("modules/quality-data/keys/secrets/secret-key");
     assert_eq!(std::fs::read_to_string(&copy).unwrap(), "qs-test-not-real");
     assert!(!dir

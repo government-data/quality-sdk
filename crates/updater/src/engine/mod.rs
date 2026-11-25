@@ -13,8 +13,9 @@
 //! 3. **Drain**: maintenance; wait until nothing is running. If it does not
 //!    empty in time it is postponed without touching anything.
 //! 4. **Back up** and check the backup. If it fails, nothing is touched. A
-//!    volume backed up by a replica is not copied: the update goes ahead
-//!    only if that replica is in sync, asked here and before maintenance.
+//!    volume backed up by a replica in sync is not copied; with no replica
+//!    it is dumped as any critical piece; a replica not in sync refuses
+//!    the update, asked here and before maintenance.
 //! 5. **Apply**: keep the current package, put the new one, bring it up.
 //! 6. **Verify** that the expected version answers.
 //! 7. If not: **go back** to the previous package on the same database (the
@@ -131,8 +132,9 @@ pub trait Host {
     /// with what the core says of it (none: nothing is backed up that way).
     fn replicas(&self) -> Result<Vec<Replica>, String>;
     /// Back up the database and the keys, and check the backup. A volume
-    /// whose backup is a replica is not copied.
-    fn back_up(&self) -> Result<PathBuf, String>;
+    /// whose backup is a replica is not copied, unless it is in `dump`:
+    /// those with no replica (`no_replica`), dumped and checked too.
+    fn back_up(&self, dump: &[Replica]) -> Result<PathBuf, String>;
     /// Copy the files of `module`'s installed package.
     fn save_package(&self, module: &str, version: &str) -> Result<(PathBuf, Vec<String>), String>;
     /// The files a package carries.

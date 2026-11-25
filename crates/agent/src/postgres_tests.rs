@@ -54,7 +54,7 @@ const LISTED: &str = ";\n; Archive created\n;\n215; 1259 16390 TABLE public item
 fn every_database_is_dumped_in_its_container_and_read_back_whole() {
     let r = root("back-up");
     let (p, fake) = postgres(&r, server(LISTED));
-    let dir = p.back_up().unwrap();
+    let dir = p.back_up(&[]).unwrap();
     assert!(dir.starts_with(r.join("var/lib/quality-data/backups")));
     assert_eq!(
         std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
@@ -94,21 +94,21 @@ fn every_database_is_dumped_in_its_container_and_read_back_whole() {
 fn a_dump_that_does_not_read_back_or_holds_nothing_is_no_backup() {
     let r = root("bad-dump");
     let (p, _) = postgres(&r, server(";\n; empty\n"));
-    assert!(p.back_up().unwrap_err().contains("holds nothing"));
+    assert!(p.back_up(&[]).unwrap_err().contains("holds nothing"));
     let cut = server(LISTED).answer(
         "--file=/dev/null",
         Err("could not read from input file: end of file"),
     );
     let (p, _) = postgres(&r, cut);
-    let err = p.back_up().unwrap_err();
+    let err = p.back_up(&[]).unwrap_err();
     assert!(
         err.contains("does not read back whole") && err.contains("end of file"),
         "{err}"
     );
     let (p, _) = postgres(&r, Fake::default().answer("psql", Ok("")));
-    assert!(p.back_up().unwrap_err().contains("no database"));
+    assert!(p.back_up(&[]).unwrap_err().contains("no database"));
     let (p, _) = postgres(&r, Fake::default().answer("psql", Ok("x; drop\n")));
-    assert!(p.back_up().is_err());
+    assert!(p.back_up(&[]).is_err());
     // None of them left a whole backup.
     let whole = std::fs::read_dir(r.join("var/lib/quality-data/backups"))
         .unwrap()
@@ -128,7 +128,7 @@ fn only_the_newest_backups_are_kept() {
     }
     std::fs::create_dir_all(backups.join("by-hand")).unwrap();
     let (p, _) = postgres(&r, server(LISTED));
-    p.back_up().unwrap();
+    p.back_up(&[]).unwrap();
     let mut left: Vec<String> = std::fs::read_dir(&backups)
         .unwrap()
         .flatten()

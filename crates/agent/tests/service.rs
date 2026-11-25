@@ -15,7 +15,7 @@ use agent::service::{round, run, run_with};
 use aws_client::http::Https;
 use chrono::{DateTime, TimeZone, Utc};
 use module_manifest::Manifest;
-use updater::engine::{CloudError, Installed, Offer, OfferedPackage};
+use updater::engine::{CloudError, Installed, Offer, OfferedPackage, Replica};
 use updater::state::{Modules, Outcome, State};
 
 /// What the fake `updater/v1` server was asked: method and path.
@@ -128,7 +128,7 @@ impl Compose for Fakes {
 }
 
 impl Database for Fakes {
-    fn back_up(&self) -> Result<PathBuf, String> {
+    fn back_up(&self, _dump: &[Replica]) -> Result<PathBuf, String> {
         Err("not offered".into())
     }
     fn restore(&self, _b: &Path) -> Result<(), String> {

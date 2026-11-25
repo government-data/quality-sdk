@@ -21,13 +21,16 @@
 //! container has, named or anonymous. A piece that is not critical is not
 //! backed up, nor is a volume whose backup is a replica in sync (`backup:
 //! replica`): the engine goes ahead only if the core says it is in sync,
-//! and a restore leaves that volume as it is.
+//! and a restore leaves that volume as it is. With no replica configured
+//! (decision 0012) the engine names the volume and it is copied, checked
+//! and listed as any other.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use module_manifest::Manifest;
 use serde::{Deserialize, Serialize};
+use updater::engine::Replica;
 
 use crate::command::{Cmd, Runner};
 use crate::compose;
@@ -125,13 +128,24 @@ impl ModuleData {
         Ok(all)
     }
 
-    /// Every critical piece of the installed modules' data but the
-    /// replicated volumes into `dir`,
-    /// checked, then listed in [`LIST`]; `databases` are those dumped.
-    pub fn back_up_into(&self, dir: &Path, databases: &[String]) -> Result<usize, String> {
+    /// Every critical piece of the installed modules' data into `dir`,
+    /// checked, then listed in [`LIST`]; `databases` are those dumped. A
+    /// replicated volume is copied only when it is in `dump` (it has no
+    /// replica, decision 0012), and then listed so a restore covers it.
+    pub fn back_up_into(
+        &self,
+        dir: &Path,
+        databases: &[String],
+        dump: &[Replica],
+    ) -> Result<usize, String> {
         let mut pieces = Vec::new();
         for m in self.manifests()? {
-            let data = m.data.dumped();
+            let mut data = m.data.dumped();
+            let unreplicated = m.data.replicated().filter(|v| {
+                dump.iter()
+                    .any(|r| r.module == m.name && r.volume == v.name)
+            });
+            data.volumes.extend(unreplicated.cloned());
             for db in &data.databases {
                 if !databases.contains(&db.name) {
                     return Err(format!(
