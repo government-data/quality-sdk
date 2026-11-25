@@ -10,8 +10,10 @@
 #   3. www.<domain> is a CNAME to <org>.github.io and nothing else;
 #   4. http:// redirects to https://, and www to the apex;
 #   5. the certificate covers the domain;
-#   6. / leads to /guide/overview/;
-#   7. /guide/overview/ and /es/guide/overview/ are 200, each with
+#   6. / leads to the landing page, /guide/platform/ (the docs site's
+#      `redirects` in astro.config.mjs, since docs 0.6.0);
+#   7. the landing page in both languages, /guide/platform/ and
+#      /es/guide/platform/, is 200, each with
 #      <link rel="canonical" href="https://<domain>/...">;
 #   8. a missing page is 404 with the guide's 404 page;
 #   9. none of those pages holds an /api/ or /docs/ link.
@@ -28,6 +30,8 @@ fi
 domain=$1
 org=$2
 url="https://$domain"
+# The page / leads to, and its Spanish twin.
+landing=/guide/platform/
 
 # GitHub Pages' apex addresses, from GitHub's "Managing a custom domain".
 want_a="185.199.108.153
@@ -86,22 +90,22 @@ ok "the certificate covers $domain"
 
 next
 # GitHub Pages has no server-side redirects: / is a page whose meta refresh
-# leads to the overview; curl follows HTTP redirects only.
+# leads to the landing page; curl follows HTTP redirects only.
 root=$(curl -fsSL --max-time 20 "$url/")
-grep -qi 'http-equiv="refresh"[^>]*url=/guide/overview/' <<<"$root" ||
-  fail "/ does not lead to /guide/overview/"
-ok "/ leads to /guide/overview/"
+grep -qi "http-equiv=\"refresh\"[^>]*url=$landing\"" <<<"$root" ||
+  fail "/ does not lead to $landing"
+ok "/ leads to $landing"
 
 next
 pages=""
-for path in /guide/overview/ /es/guide/overview/; do
+for path in "$landing" "/es$landing"; do
   [ "$(code "$url$path")" = 200 ] || fail "$path is not 200"
   page=$(curl -fsS --max-time 20 "$url$path")
   grep -q "<link rel=\"canonical\" href=\"$url$path\"" <<<"$page" ||
     fail "$path has no canonical link to $url$path"
   pages+=$page
 done
-ok "the overview in both languages is 200 with its canonical link"
+ok "the landing page in both languages is 200 with its canonical link"
 
 next
 missing="$url/qs-verify-missing-page/"
