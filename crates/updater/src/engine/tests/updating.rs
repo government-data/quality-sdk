@@ -157,3 +157,57 @@ fn it_saves_each_module_at_its_own_version() {
         ],
     );
 }
+
+/// `offer(version)` with the core module at `core` (decision 0014).
+fn offer_with_core(version: &str, core: &str) -> Offer {
+    let mut o = offer(version);
+    o.modules.get_mut("quality-data").unwrap().version = core.into();
+    o
+}
+
+#[test]
+fn a_platform_version_that_changes_only_another_module_updates() {
+    let f = Fake::new();
+    // The core stays at the installed 1.2.0; only the orchestrator moves.
+    *f.cloud.borrow_mut() = Some(Ok(offer_with_core("1.3.0", "1.2.0")));
+    let mut s = State::new("1.2.0");
+    run(&f, &mut s, Who::Person);
+
+    assert_eq!(s.phase, Phase::Idle);
+    assert_eq!(s.installed_version, "1.3.0");
+    assert_eq!(s.last.as_ref().unwrap().kind, OutcomeKind::Updated);
+    assert!(s.failed.is_empty(), "{:?}", s.failed);
+    assert!(!f.did("report_to_cloud:RolledBack"));
+}
+
+#[test]
+fn a_platform_version_that_changes_the_core_expects_the_new_core() {
+    let f = Fake::new();
+    // The core moves to 1.2.1 in platform version 1.3.0.
+    *f.cloud.borrow_mut() = Some(Ok(offer_with_core("1.3.0", "1.2.1")));
+    let mut s = State::new("1.2.0");
+    run(&f, &mut s, Who::Person);
+
+    assert_eq!(s.installed_version, "1.3.0");
+    assert_eq!(s.last.as_ref().unwrap().kind, OutcomeKind::Updated);
+    assert_eq!(*f.core.borrow(), "1.2.1");
+}
+
+#[test]
+fn a_core_that_answers_another_version_rolls_back() {
+    // The images put do not change what the core answers.
+    let f = Fake::new().failing("core:stuck");
+    *f.cloud.borrow_mut() = Some(Ok(offer_with_core("1.3.0", "1.2.1")));
+    let mut s = State::new("1.2.0");
+    run(&f, &mut s, Who::Person);
+
+    assert_eq!(s.installed_version, "1.2.0");
+    assert_eq!(s.last.as_ref().unwrap().kind, OutcomeKind::RolledBack);
+    assert!(s
+        .last
+        .as_ref()
+        .unwrap()
+        .detail
+        .contains("1.2.0 answers, not 1.2.1"));
+    assert_eq!(s.failed, ["1.3.0"]);
+}

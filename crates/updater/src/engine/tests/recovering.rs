@@ -126,6 +126,7 @@ fn a_cut_halfway_goes_on_from_the_saved_phase() {
         // What was applied before the cut is already up.
         if matches!(stored.phase, Phase::Verifying { .. }) {
             *f.up.borrow_mut() = "1.3.0".into();
+            *f.core.borrow_mut() = "1.3.0".into();
         }
         let mut s = stored.clone();
         run(&f, &mut s, Who::Service);
