@@ -107,7 +107,7 @@ menu: { label: { en: Lake, es: Lago } }
 consumes: { apis: [core] }
 permissions: { actions: [] }
 config: { keys: [] }
-topology: { roles: [lake] }
+topology: { roles: [{ name: lake, services: [rustfs], strategy: all }] }
 requirements: { core: '>=2' }
 provides:
   apis: []

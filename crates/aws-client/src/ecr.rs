@@ -47,6 +47,9 @@ struct Answer {
 struct Data {
     authorization_token: String,
     proxy_endpoint: String,
+    /// Seconds since the epoch (ECR writes a number with a fraction).
+    #[serde(default)]
+    expires_at: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -111,6 +114,14 @@ impl Ecr {
 
     /// `GetAuthorizationToken`: the registry's host and its credential.
     pub fn authorization(&self) -> Result<RegistryAuth, AwsError> {
+        self.authorization_until().map(|(auth, _)| auth)
+    }
+
+    /// [`Ecr::authorization`] with when the credential expires, as ECR
+    /// says (`expiresAt`; `None` when it does not say).
+    pub fn authorization_until(
+        &self,
+    ) -> Result<(RegistryAuth, Option<chrono::DateTime<chrono::Utc>>), AwsError> {
         let request = self.request("GetAuthorizationToken", &json!({}));
         let what = "ECR GetAuthorizationToken";
         let r = self.account.send("ecr", request, what)?;
@@ -134,11 +145,15 @@ impl Ecr {
             .trim_start_matches("https://")
             .trim_end_matches('/')
             .to_string();
-        Ok(RegistryAuth {
+        let expires_at = data
+            .expires_at
+            .and_then(|secs| chrono::DateTime::from_timestamp(secs as i64, 0));
+        let auth = RegistryAuth {
             host,
             user: user.into(),
             password: password.into(),
-        })
+        };
+        Ok((auth, expires_at))
     }
 }
 
@@ -166,6 +181,8 @@ mod tests {
             ("AWS", "temporary")
         );
         assert!(!format!("{auth:?}").contains("temporary"), "never printed");
+        let (_, expires_at) = Ecr::new(account(&aws)).authorization_until().unwrap();
+        assert_eq!(expires_at.unwrap().timestamp(), 1_800_000_000);
         let sent = aws.sent.borrow();
         let r = &sent[0];
         assert_eq!(

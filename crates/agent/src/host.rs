@@ -149,6 +149,9 @@ pub struct AgentHost {
     /// quality-data has not been told the installed modules since the agent
     /// started or a version was put.
     modules_untold: Cell<bool>,
+    /// quality-data was told the installed modules since
+    /// [`AgentHost::take_told`] last asked.
+    told_anew: Cell<bool>,
 }
 
 impl AgentHost {
@@ -158,6 +161,7 @@ impl AgentHost {
             state_file,
             put_order: RefCell::default(),
             modules_untold: Cell::new(true),
+            told_anew: Cell::new(false),
         }
     }
 
@@ -166,7 +170,10 @@ impl AgentHost {
     /// logged and told again by [`AgentHost::tell_modules_if_untold`].
     pub fn tell_modules(&self) {
         match self.put_modules() {
-            Ok(()) => self.modules_untold.set(false),
+            Ok(()) => {
+                self.modules_untold.set(false);
+                self.told_anew.set(true);
+            }
             Err(err) => {
                 self.modules_untold.set(true);
                 tracing::warn!("quality-data was not told the installed modules: {err}");
@@ -207,6 +214,13 @@ impl AgentHost {
         if self.modules_untold.get() {
             self.tell_modules();
         }
+    }
+
+    /// Whether quality-data was told the installed modules since the last
+    /// call (at start, or after a version was put: its API may have
+    /// restarted and forgotten what it keeps in memory).
+    pub fn take_told(&self) -> bool {
+        self.told_anew.replace(false)
     }
 }
 
