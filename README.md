@@ -135,7 +135,7 @@ the core is built; the modules and the capabilities between them are planned.
 
 | Path                       | What                                                                                                                         |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `infra/aws/`               | The AWS side in Terraform: S3 releases bucket, ECR, KMS signing key, IAM Roles Anywhere, publish role, module publish roles. |
+| `infra/aws/`               | The AWS side in Terraform: S3 releases bucket, ECR, KMS signing key, IAM Roles Anywhere, publish role, module publish roles, the user guide's Route 53 records. |
 | `infra/test-installation/` | One EC2 test server, applied and destroyed by a person.                                                                      |
 | `crates/index-model`       | The signed version index: model, validation, signature check and rollout. Pure, no I/O.                                      |
 | `crates/module-manifest`   | Module manifests: model, validation and capability checks. Pure, no I/O.                                                     |
