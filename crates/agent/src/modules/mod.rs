@@ -76,10 +76,18 @@ pub trait ModuleHost {
 /// What a command did: its warnings, for the person.
 pub type Warnings = Vec<String>;
 
+/// What `add` did: its warnings and what the module got
+/// ([`provision::gets`]), for the person.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Added {
+    pub warnings: Warnings,
+    pub gets: Vec<String>,
+}
+
 /// Add `module` at the installed platform version; with a progress file
 /// of an `add` that stopped, resume it (every step runs again, changing
 /// nothing that is done).
-pub fn add(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
+pub fn add(host: &dyn ModuleHost, module: &str) -> Result<Added, String> {
     host.no_update_running()?;
     let p = host.provision();
     let resuming = match p.progress(module)? {
@@ -172,7 +180,8 @@ pub fn add(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
     p.audit(&provision::event("ModuleAdded", module, &version, None));
     host.report("module_added", &installed.version, module, &version, "");
     p.clear_progress(module)?;
-    Ok(warnings)
+    let gets = provision::gets(&manifest, &audiences);
+    Ok(Added { warnings, gets })
 }
 
 /// The warnings of `m`'s optional requirements that `installed` does not

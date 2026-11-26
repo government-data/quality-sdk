@@ -121,11 +121,26 @@ pub fn check_features(m: &Manifest, features: &Features) -> Result<(), String> {
 }
 
 /// The audiences of the machine client: each consumed capability's
-/// `token-audience`, as its provider among `installed` declares it.
+/// `token-audience`, as its provider among `installed` declares it, then
+/// those the manifest declares (`oidc.machine.audiences`), each once.
 pub fn audiences(m: &Manifest, installed: &[Manifest]) -> Result<Vec<String>, String> {
     let Some(machine) = m.oidc.as_ref().and_then(|o| o.machine.as_ref()) else {
         return Ok(Vec::new());
     };
+    let mut audiences = consumed_audiences(m, machine, installed)?;
+    for a in &machine.audiences {
+        if !audiences.contains(a) {
+            audiences.push(a.clone());
+        }
+    }
+    Ok(audiences)
+}
+
+fn consumed_audiences(
+    m: &Manifest,
+    machine: &module_manifest::OidcMachine,
+    installed: &[Manifest],
+) -> Result<Vec<String>, String> {
     machine
         .capabilities
         .iter()
@@ -145,6 +160,35 @@ pub fn audiences(m: &Manifest, installed: &[Manifest]) -> Result<Vec<String>, St
                 })
         })
         .collect()
+}
+
+/// What `m` gets at `add`, for the person (decision 0009, ruling 30):
+/// its secret files, its role and databases, its OIDC clients with the
+/// machine client's audiences. Names only, never a value.
+pub fn gets(m: &Manifest, audiences: &[String]) -> Vec<String> {
+    let mut gets = Vec::new();
+    let generated: Vec<&str> = m.secrets.generate.iter().map(|g| g.name.as_str()).collect();
+    if !generated.is_empty() {
+        gets.push(format!("secret files: {}", generated.join(", ")));
+    }
+    if let Some(role) = m.database_role() {
+        let dbs: Vec<&str> = m.created_databases().map(|d| d.name.as_str()).collect();
+        gets.push(format!(
+            "PostgreSQL role {role} with databases: {}",
+            dbs.join(", ")
+        ));
+    }
+    let oidc = m.oidc.as_ref();
+    if oidc.is_some_and(|o| o.people.is_some()) {
+        gets.push("an OIDC client people sign in through".into());
+    }
+    if oidc.is_some_and(|o| o.machine.is_some()) {
+        gets.push(format!(
+            "an OIDC machine client with the audiences: {}",
+            audiences.join(", ")
+        ));
+    }
+    gets
 }
 
 /// Steps 4 to 6 of point 7 for `m`, each saved in `progress` before it
@@ -178,9 +222,9 @@ pub fn provision(
         env.push(("QD_DB_NAME", dbs[0].clone()));
         env.push(("QD_DB_CA_FILE", ca.display().to_string()));
     }
-    if let Some(oidc) = &m.oidc {
+    if m.oidc.is_some() {
         save("clients")?;
-        let clients = clients(p, m, oidc, audiences)?;
+        let clients = clients(p, m, audiences)?;
         let answer = p.put_clients(&m.name, &clients)?;
         env.push(("QD_OIDC_ISSUER", answer.issuer));
         if let Some(id) = answer.people_client_id {
@@ -195,30 +239,32 @@ pub fn provision(
 }
 
 /// The clients' body: each issued secret made only if absent.
-fn clients(
-    p: &dyn Provision,
-    m: &Manifest,
-    oidc: &module_manifest::Oidc,
-    audiences: &[String],
-) -> Result<Clients, String> {
+fn clients(p: &dyn Provision, m: &Manifest, audiences: &[String]) -> Result<Clients, String> {
     let uid = m.secrets.uid;
-    if oidc.people.is_some() {
+    let oidc = m.oidc.as_ref();
+    if oidc.is_some_and(|o| o.people.is_some()) {
         p.ensure_secret(&m.name, OIDC_PEOPLE_SECRET, ISSUED, uid)?;
     }
-    if oidc.machine.is_some() {
+    if oidc.is_some_and(|o| o.machine.is_some()) {
         p.ensure_secret(&m.name, OIDC_MACHINE_SECRET, ISSUED, uid)?;
     }
-    clients_with(oidc, audiences, |name| p.secret(&m.name, name))
+    clients_with(m, audiences, |name| p.secret(&m.name, name))
 }
 
-/// The clients' body with each secret from `value` (by its file's name),
-/// not keeping the previous ones.
+/// The clients' body of `m` with each secret from `value` (by its file's
+/// name), not keeping the previous ones. The machine client carries the
+/// module's required capabilities (ruling 47) when the manifest declares
+/// audiences of its own, the only ones the core grants by them; without,
+/// the body is the one every core reads.
 pub fn clients_with(
-    oidc: &module_manifest::Oidc,
+    m: &Manifest,
     audiences: &[String],
     value: impl Fn(&str) -> Result<Secret, String>,
 ) -> Result<Clients, String> {
     let mut clients = Clients::default();
+    let Some(oidc) = &m.oidc else {
+        return Ok(clients);
+    };
     if let Some(people) = &oidc.people {
         clients.people = Some(PeopleClient {
             redirect_paths: people.redirect_paths.clone(),
@@ -234,6 +280,15 @@ pub fn clients_with(
         clients.machine = Some(MachineClient {
             capabilities: machine.capabilities.clone(),
             audiences: audiences.to_vec(),
+            requires: if machine.audiences.is_empty() {
+                Vec::new()
+            } else {
+                m.requires
+                    .capabilities
+                    .iter()
+                    .map(|c| c.name.clone())
+                    .collect()
+            },
             secret: value(OIDC_MACHINE_SECRET)?,
             keep_previous: false,
         });

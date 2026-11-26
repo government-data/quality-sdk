@@ -203,7 +203,7 @@ fn main() -> ExitCode {
                 host.images.push((n.to_string(), r.to_string()));
             }
             host.package = PathBuf::from(package);
-            add(&host, name)
+            add(&host, name).map(|a| a.warnings)
         }
         [action, name] if action == "remove" => remove(&host, name),
         [action, name] if action == "rotate" => rotate(&host, name),

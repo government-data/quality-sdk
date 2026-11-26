@@ -159,8 +159,10 @@ fn tell_clients(
     audiences: &[String],
     keep_previous: bool,
 ) -> Result<(), String> {
-    let Some(oidc) = &m.oidc else { return Ok(()) };
-    let mut clients = provision::clients_with(oidc, audiences, |name| new_value(p, &m.name, name))?;
+    if m.oidc.is_none() {
+        return Ok(());
+    }
+    let mut clients = provision::clients_with(m, audiences, |name| new_value(p, &m.name, name))?;
     if let Some(c) = clients.people.as_mut() {
         c.keep_previous = keep_previous;
     }

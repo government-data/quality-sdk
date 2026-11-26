@@ -14,6 +14,7 @@
 //!       values: { author: bi-superset:Author }
 //!   machine:
 //!     capabilities: [sql-query]          # each in requires.capabilities
+//!     audiences: [quality-jobs]          # the core's own, granted by the core
 //! ```
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -28,6 +29,8 @@ use crate::ManifestError;
 pub const MAX_OIDC_PATHS: usize = 8;
 /// The most values of a role claim.
 pub const MAX_ROLE_VALUES: usize = 16;
+/// The most audiences a machine client declares.
+pub const MAX_MACHINE_AUDIENCES: usize = 8;
 /// Claims the core's provider sends already: a role claim cannot take them.
 pub const RESERVED_CLAIMS: &[&str] = &[
     "sub",
@@ -96,6 +99,11 @@ pub struct RoleClaim {
 pub struct OidcMachine {
     /// The capabilities it consumes, each one of `requires.capabilities`.
     pub capabilities: Vec<String>,
+    /// Audiences it asks for beyond its capabilities' `token-audience`:
+    /// the core's own (`quality-jobs`), which the core grants or refuses
+    /// by the module's `requires` (decision 0009, ruling 30).
+    #[serde(default)]
+    pub audiences: Vec<String>,
 }
 
 fn yes() -> bool {
@@ -213,6 +221,31 @@ fn validate_machine(m: &OidcMachine, required: &[&str]) -> Result<(), ManifestEr
         if !seen.insert(c) {
             return Err(invalid(format!(
                 "oidc.machine.capabilities: {c:?} appears twice"
+            )));
+        }
+    }
+    validate_audiences(&m.audiences)
+}
+
+fn validate_audiences(audiences: &[String]) -> Result<(), ManifestError> {
+    if audiences.len() > MAX_MACHINE_AUDIENCES {
+        return Err(invalid(format!(
+            "oidc.machine.audiences: at most {MAX_MACHINE_AUDIENCES}"
+        )));
+    }
+    let mut seen = BTreeSet::new();
+    for a in audiences {
+        let ok = (1..=64).contains(&a.len())
+            && a.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+        if !ok {
+            return Err(invalid(format!(
+                "oidc.machine.audiences: {a:?}: 1 to 64 of [A-Za-z0-9._-]"
+            )));
+        }
+        if !seen.insert(a) {
+            return Err(invalid(format!(
+                "oidc.machine.audiences: {a:?} appears twice"
             )));
         }
     }

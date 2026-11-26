@@ -200,7 +200,7 @@ impl ModuleHost for Fake {
 #[test]
 fn docs_is_added_from_the_installed_version_and_served() {
     let f = Fake::new(&[("quality-data", "")]);
-    assert_eq!(add(&f, "docs").unwrap(), Warnings::new());
+    assert_eq!(add(&f, "docs").unwrap(), Added::default());
     assert_eq!(
         f.calls(),
         [
@@ -254,7 +254,7 @@ fn a_module_whose_required_capability_is_missing_is_not_added() {
 fn a_missing_optional_requirement_warns() {
     let optional = "requires: { capabilities: [{ name: lake, version: 1, protocols: [s3], optional: true }] }\n";
     let f = Fake::new(&[("quality-data", "")]).with_index("observability", optional);
-    let warnings = add(&f, "observability").unwrap();
+    let warnings = add(&f, "observability").unwrap().warnings;
     assert!(warnings[0].contains("optional"), "{warnings:?}");
 }
 

@@ -39,8 +39,8 @@ pub use model::{
     MAX_CHECK_TIMEOUT_SECS,
 };
 pub use oidc::{
-    Oidc, OidcMachine, OidcPeople, RoleClaim, TokenAlg, MAX_OIDC_PATHS, MAX_ROLE_VALUES,
-    RESERVED_CLAIMS,
+    Oidc, OidcMachine, OidcPeople, RoleClaim, TokenAlg, MAX_MACHINE_AUDIENCES, MAX_OIDC_PATHS,
+    MAX_ROLE_VALUES, RESERVED_CLAIMS,
 };
 pub use permissions::{Action, Permissions, Policy};
 pub use route::{Auth, InLanguages, Menu, Route, RESERVED_ROUTE_SEGMENTS};
@@ -76,3 +76,8 @@ pub const ROLES_AGENT: &str = "0.8.0";
 /// service's container that exited with code 0 as healthy (decision 0002,
 /// amended 2026-11-25): an older agent refuses the key.
 pub const ONESHOT_AGENT: &str = "0.9.0";
+
+/// The first agent version that reads `oidc.machine.audiences` and sends
+/// the module's `requires` with its machine client (decision 0009, rulings
+/// 30 and 47): an older agent refuses the key.
+pub const MACHINE_AUDIENCES_AGENT: &str = "0.10.0";

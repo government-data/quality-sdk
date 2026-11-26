@@ -47,11 +47,15 @@ pub struct PeopleClient {
     pub keep_previous: bool,
 }
 
-/// The machine client: the capabilities it consumes and their audiences.
+/// The machine client: the capabilities it consumes, its audiences and
+/// the capabilities the module requires (by which the core grants some
+/// audiences; left out when empty, for a core that predates it).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MachineClient {
     pub capabilities: Vec<String>,
     pub audiences: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<String>,
     pub secret: Secret,
     pub keep_previous: bool,
 }
