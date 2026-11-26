@@ -3,16 +3,14 @@
 #
 # - SSH (22) to each machine, from ssh_cidr only; the master's web entry
 #   point (443) from ssh_cidr too, for the person's browser;
-# - the master's web (443: the web, the join) and internal (9443: renewal,
-#   the engine port, the core's internal routes) entry points from both
-#   clusters;
-# - the master's lakegate entry point (9444: the core's lake check, which
-#   the lake's gate asks before each request) from the lake only (decision
-#   0013);
+# - the master's one port (443) from both clusters: the web, the join, and
+#   by host name the internal routes (renewal, the engine port) and the
+#   core's lake check, which the lake's gate asks before each request;
 # - the Trino coordinator's HTTP port (discovery) on the master from the
 #   worker; the worker's HTTP port from the master;
-# - the lake's gate (S3, the Iceberg REST catalog) and its admin adapter
-#   from the master and the worker;
+# - the lake's one port (443: its gate, S3 and the Iceberg REST catalog,
+#   and its admin adapter, routed inside by host name or path) from the
+#   master and the worker;
 # - no PostgreSQL port: no cluster claims from the queue (the job runners
 #   are on the master);
 # - out: HTTPS and HTTP to the internet (ECR, S3, packages), and each port
@@ -28,17 +26,12 @@ resource "aws_security_group" "machine" {
 locals {
   # Between the machines: from the group of `from` to `port` on `to`.
   flows = {
-    "lake-web"              = { from = "lake", to = "master", port = var.ports.web }
-    "trino-worker-web"      = { from = "trino-worker", to = "master", port = var.ports.web }
-    "lake-internal"         = { from = "lake", to = "master", port = var.ports.internal }
-    "trino-worker-internal" = { from = "trino-worker", to = "master", port = var.ports.internal }
-    "lake-lakegate"         = { from = "lake", to = "master", port = var.ports.lakegate }
-    "worker-coordinator"    = { from = "trino-worker", to = "master", port = var.ports.coordinator }
-    "master-worker"         = { from = "master", to = "trino-worker", port = var.ports.worker }
-    "master-lake-gate"      = { from = "master", to = "lake", port = var.ports.lake_gate }
-    "worker-lake-gate"      = { from = "trino-worker", to = "lake", port = var.ports.lake_gate }
-    "master-lake-adapter"   = { from = "master", to = "lake", port = var.ports.lake_adapter }
-    "worker-lake-adapter"   = { from = "trino-worker", to = "lake", port = var.ports.lake_adapter }
+    "lake-web"           = { from = "lake", to = "master", port = var.ports.web }
+    "trino-worker-web"   = { from = "trino-worker", to = "master", port = var.ports.web }
+    "worker-coordinator" = { from = "trino-worker", to = "master", port = var.ports.coordinator }
+    "master-worker"      = { from = "master", to = "trino-worker", port = var.ports.worker }
+    "master-lake"        = { from = "master", to = "lake", port = var.ports.lake }
+    "worker-lake"        = { from = "trino-worker", to = "lake", port = var.ports.lake }
   }
   # From the person's address.
   person = merge(

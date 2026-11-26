@@ -16,12 +16,12 @@ enrolment; the clusters do not enrol. Its state is local and apart from
 `infra/aws`.
 
 One security group per machine, rules by source group (`rules.tf`): SSH
-from `ssh_cidr` to each; the master's 443 from `ssh_cidr` and its 443 and
-9443 from both clusters, its 9444 (the lake gate's check) from the lake
-only; the coordinator's port from the worker and the
-worker's from the master; the lake's gate and adapter from the master and
-the worker; no PostgreSQL port. Out: 443 and 80 to the internet, and the
-ports above to their groups. On the clusters cloud-init adds `app_domain`
+from `ssh_cidr` to each; the master's 443 from `ssh_cidr` and from both
+clusters (its internal routes and the lake gate's check are on 443 by host
+name); the coordinator's port from the worker and the worker's from the
+master; the lake's one port, 443 (its gate and its admin adapter behind
+it), from the master and the worker; no PostgreSQL port. Out: 443 and 80
+to the internet, and the ports above to their groups. On the clusters cloud-init adds `app_domain`
 and the internal name (`internal.<app_domain>` unless set) to `/etc/hosts`
 as the master's private address; the public record for the browser is the
 person's.

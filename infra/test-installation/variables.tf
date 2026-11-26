@@ -59,23 +59,17 @@ variable "internal_domain" {
 }
 
 variable "ports" {
-  description = "The ports between the machines, as decisions 0011 and 0012 steps 9 and 10 publish them: the master's web (443), internal (9443) and lakegate (9444, TRAEFIK_LAKEGATE_PORT: the lake gate's check) entry points, the Trino coordinator's and the worker's HTTP ports, and the lake's gate (S3 and the Iceberg REST catalog) and admin adapter."
+  description = "The ports between the machines, as decisions 0011 and 0012 steps 9 and 10 publish them: the master's one port (443: the web, the join, and by host name its internal routes and the lake gate's check), the Trino coordinator's and the worker's HTTP ports, and the lake's one port (443: its gate, S3 and the Iceberg REST catalog, and its admin adapter, routed inside by host name or path)."
   type = object({
-    web          = number
-    internal     = number
-    lakegate     = number
-    coordinator  = number
-    worker       = number
-    lake_gate    = number
-    lake_adapter = number
+    web         = number
+    coordinator = number
+    worker      = number
+    lake        = number
   })
   default = {
-    web          = 443
-    internal     = 9443
-    lakegate     = 9444
-    coordinator  = 8080
-    worker       = 8080
-    lake_gate    = 9000
-    lake_adapter = 9020
+    web         = 443
+    coordinator = 8080
+    worker      = 8080
+    lake        = 443
   }
 }
