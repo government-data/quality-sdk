@@ -19,7 +19,8 @@ variable "modules" {
     runs are mirrored into its own repositories by digest
     (tools/mirror-image.sh): quality-data's traefik, postgres and dolt (its
     catalog), lake-rustfs's rustfs and gate (Traefik in front of the lake;
-    its own image is admin, the lake admin adapter).
+    its own image is admin, the lake admin adapter), bi-superset's valkey
+    (its cache and sessions; its own image is superset).
   EOT
   type        = map(list(string))
   default = {
@@ -27,6 +28,7 @@ variable "modules" {
     orchestrator   = ["api", "web"]
     docs           = ["web"]
     "lake-rustfs"  = ["rustfs", "gate", "admin"]
+    "bi-superset"  = ["superset", "valkey"]
   }
   validation {
     condition     = !contains(keys(var.modules), "tools")
@@ -125,9 +127,9 @@ variable "module_publishers" {
       repo  = number
     }))
   }))
-  # government-data/core, government-data/docs and government-data/lake-rustfs
-  # send GitHub's immutable subject (owner 359174349; repositories 1465567877,
-  # 1467989556 and 1469349992), so their roles must trust that form.
+  # government-data/core, docs, lake-rustfs and bi-superset send GitHub's
+  # immutable subject (owner 359174349; repositories 1465567877, 1467989556,
+  # 1469349992 and 1471716471), so their roles must trust that form.
   default = {
     "quality-data" = {
       repo   = "government-data/core"
@@ -143,6 +145,11 @@ variable "module_publishers" {
       repo   = "government-data/lake-rustfs"
       images = ["admin"]
       ids    = { owner = 359174349, repo = 1469349992 }
+    }
+    "bi-superset" = {
+      repo   = "government-data/bi-superset"
+      images = ["superset"]
+      ids    = { owner = 359174349, repo = 1471716471 }
     }
   }
   validation {
