@@ -173,3 +173,24 @@ fn an_event_the_core_does_not_take_waits_and_is_sent_in_order() {
     assert!(!outbox.path.exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_removal_refusals_are_read_and_a_bad_answer_is_an_error() {
+    let answer = r#"{"refusals":[{"module":"orchestrator","reason":"flows on its line",
+        "counts":{"flows":2}}]}"#;
+    let (base, sent) = server(&[("GET /updater/v1/removal/engine-x", 200, answer)]);
+    let got = api(&base).removal_refusals("engine-x").unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].module, "orchestrator");
+    assert_eq!(got[0].counts["flows"], 2);
+    assert_eq!(sent.lock().unwrap()[0].1, "/updater/v1/removal/engine-x");
+    let (base, _) = server(&[(
+        "GET /updater/v1/removal/engine-x",
+        200,
+        r#"{"refusals":[]}"#,
+    )]);
+    assert!(api(&base).removal_refusals("engine-x").unwrap().is_empty());
+    let (base, _) = server(&[("GET /updater/v1/removal/engine-x", 200, "{}")]);
+    assert!(api(&base).removal_refusals("engine-x").is_err());
+    assert!(api(&base).removal_refusals("../x").is_err());
+}

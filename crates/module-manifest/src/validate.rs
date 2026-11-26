@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::model::{Backup, Data, Drain, Health, Manifest, MAX_CHECK_TIMEOUT_SECS};
+use crate::model::{Backup, Data, Health, Manifest, MAX_CHECK_TIMEOUT_SECS};
 use crate::ManifestError;
 
 pub(crate) fn invalid(why: String) -> ManifestError {
@@ -99,7 +99,11 @@ impl Manifest {
         self.validate_capabilities()?;
         validate_health(&self.health)?;
         validate_data(&self.data)?;
-        validate_drain(self.drain.as_ref())?;
+        validate_path("drain.path", self.drain.as_ref().map(|d| d.path.as_str()))?;
+        validate_path(
+            "removal.path",
+            self.removal.as_ref().map(|r| r.path.as_str()),
+        )?;
         crate::route::validate(self.route.as_ref(), self.auth, self.menu.as_ref())?;
         crate::topology::validate(self.topology.as_ref())?;
         crate::secrets::validate_secrets(&self.secrets)?;
@@ -181,17 +185,17 @@ impl Manifest {
 
 /// A path the core calls on the module's service: `/` first, then
 /// printable ASCII with no space, query or fragment.
-fn validate_drain(drain: Option<&Drain>) -> Result<(), ManifestError> {
-    let Some(d) = drain else { return Ok(()) };
-    let ok = d.path.starts_with('/')
-        && d.path.len() <= 255
-        && d.path
+fn validate_path(what: &str, path: Option<&str>) -> Result<(), ManifestError> {
+    let Some(path) = path else { return Ok(()) };
+    let ok = path.starts_with('/')
+        && path.len() <= 255
+        && path
             .chars()
             .all(|c| c.is_ascii_graphic() && !matches!(c, '?' | '#' | '\\'));
     if ok {
         Ok(())
     } else {
-        Err(invalid(format!("drain.path {:?} is not a path", d.path)))
+        Err(invalid(format!("{what} {path:?} is not a path")))
     }
 }
 

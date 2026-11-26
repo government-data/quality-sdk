@@ -35,7 +35,7 @@ pub use checks::{lost_on_removal, unmet, Loss, Unmet, Why};
 pub use error::ManifestError;
 pub use model::{
     Backup, Check, ConsumerHold, Data, Database, Drain, Health, Key, Manifest, ProvidedCapability,
-    ProviderHold, Provides, RequiredCapability, Requires, Volume, CHECK_TIMEOUT_SECS,
+    ProviderHold, Provides, Removal, RequiredCapability, Requires, Volume, CHECK_TIMEOUT_SECS,
     MAX_CHECK_TIMEOUT_SECS,
 };
 pub use oidc::{
@@ -89,3 +89,8 @@ pub const MACHINE_AUDIENCES_AGENT: &str = "0.10.0";
 /// role's machines (decision 0013, ruling 44): an older agent refuses the
 /// key.
 pub const ROLE_SECRETS_AGENT: &str = "0.11.0";
+
+/// The first agent version that reads `removal` and asks the core before
+/// a module is removed or purged (decision 0015): an older agent refuses
+/// the key.
+pub const REMOVAL_AGENT: &str = "0.12.0";

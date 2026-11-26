@@ -8,6 +8,7 @@
 //! | `POST /updater/v1/modules/{module}/clients/disable` | [`UpdaterApi::disable_clients`] |
 //! | `DELETE /updater/v1/modules/{module}` | [`UpdaterApi::delete_module`] |
 //! | `POST /updater/v1/audit` | [`UpdaterApi::audit`], [`Outbox`] |
+//! | `GET /updater/v1/removal/{module}` | [`UpdaterApi::removal_refusals`] (decision 0015) |
 //!
 //! A client's secret travels in a request body only, over mTLS; no body is
 //! logged and an error carries the core's `error` text only.
@@ -87,6 +88,21 @@ pub struct AuditEvent {
     pub error: Option<String>,
 }
 
+/// A module's refusal of a removal (decision 0015): its reason and counts,
+/// never data.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RemovalRefusal {
+    pub module: String,
+    pub reason: String,
+    #[serde(default)]
+    pub counts: std::collections::BTreeMap<String, u64>,
+}
+
+#[derive(Deserialize)]
+struct Refusals {
+    refusals: Vec<RemovalRefusal>,
+}
+
 /// A module name as a path segment.
 pub(super) fn segment(module: &str) -> Result<&str, String> {
     let ok = !module.is_empty()
@@ -125,6 +141,16 @@ impl UpdaterApi {
     pub fn delete_module(&self, module: &str) -> Result<(), String> {
         let path = format!("/modules/{}", segment(module)?);
         self.call("DELETE", &path, None).map(|_| ())
+    }
+
+    /// `GET /updater/v1/removal/{module}`: every installed module's
+    /// refusal of `module`'s removal (none: it may go).
+    pub fn removal_refusals(&self, module: &str) -> Result<Vec<RemovalRefusal>, String> {
+        let path = format!("/removal/{}", segment(module)?);
+        let answer = self.call("GET", &path, None)?;
+        serde_json::from_value::<Refusals>(answer)
+            .map(|r| r.refusals)
+            .map_err(|e| format!("GET {}{path}: its answer does not read: {e}", super::PREFIX))
     }
 
     /// `POST /updater/v1/audit`: one event.
