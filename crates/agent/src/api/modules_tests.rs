@@ -27,6 +27,7 @@ fn clients() -> Clients {
         machine: Some(MachineClient {
             capabilities: vec!["sql-query".into()],
             audiences: vec!["trino".into()],
+            requires: Vec::new(),
             secret: Secret::new(MACHINE.into()),
             keep_previous: true,
         }),
@@ -73,6 +74,14 @@ fn the_clients_are_put_with_their_secrets_and_the_answer_read() {
     api(&base).put_clients("bi", &only).unwrap();
     let body: Value = serde_json::from_str(&sent.lock().unwrap()[0].2).unwrap();
     assert!(body.get("machine").is_none(), "{body}");
+}
+
+#[test]
+fn the_machine_client_names_the_requires_when_there_are_some() {
+    let mut c = clients();
+    c.machine.as_mut().unwrap().requires = vec!["orchestration".into()];
+    let body = serde_json::to_value(&c).unwrap();
+    assert_eq!(body["machine"]["requires"], json!(["orchestration"]));
 }
 
 #[test]

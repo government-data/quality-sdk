@@ -290,8 +290,9 @@ impl Manifest {
     /// `permissions` (decision 0009); [`crate::SECRET_KIND_AGENT`] for a
     /// written `secrets.generate[].kind` (decision 0012);
     /// [`crate::ROLES_AGENT`] for `topology` (decision 0013);
-    /// [`crate::ONESHOT_AGENT`] for `health.oneshot` (decision 0002); none
-    /// for a manifest that uses none of them.
+    /// [`crate::ONESHOT_AGENT`] for `health.oneshot` (decision 0002);
+    /// [`crate::MACHINE_AUDIENCES_AGENT`] for `oidc.machine.audiences`
+    /// (decision 0009); none for a manifest that uses none of them.
     pub fn agent_needed(&self) -> Option<semver::Version> {
         let module_add = self.oidc.is_some()
             || self.permissions.is_some()
@@ -301,6 +302,7 @@ impl Manifest {
             || self.menu.as_ref().is_some_and(|m| m.requires.is_some());
         let backup = self.data.volumes.iter().any(Volume::backup_written);
         let kind = self.secrets.generate.iter().any(|g| g.kind.is_some());
+        let audiences = self.machine_audiences().next().is_some();
         let version = |v: &str| semver::Version::parse(v).expect("a version");
         let needed = [
             module_add.then(|| version(crate::MODULE_ADD_AGENT)),
@@ -308,8 +310,17 @@ impl Manifest {
             kind.then(|| version(crate::SECRET_KIND_AGENT)),
             self.topology.is_some().then(|| version(crate::ROLES_AGENT)),
             (!self.health.oneshot.is_empty()).then(|| version(crate::ONESHOT_AGENT)),
+            audiences.then(|| version(crate::MACHINE_AUDIENCES_AGENT)),
         ];
         needed.into_iter().flatten().max()
+    }
+
+    /// The audiences its machine client declares (`oidc.machine.audiences`).
+    pub fn machine_audiences(&self) -> impl Iterator<Item = &String> {
+        self.oidc
+            .iter()
+            .filter_map(|o| o.machine.as_ref())
+            .flat_map(|m| &m.audiences)
     }
 
     /// The module's PostgreSQL role, when it has a database the agent

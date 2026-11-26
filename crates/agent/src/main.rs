@@ -312,7 +312,7 @@ fn module(paths: &Paths, rest: &[String]) -> ExitCode {
             (action, name, Box::new(move |h, m| purge(h, m, &typed)))
         }
         [action, name] => match action.as_str() {
-            "add" => (action, name, Box::new(|h, m| add(h, m))),
+            "add" => (action, name, Box::new(|h, m| add(h, m).map(print_gets))),
             "remove" => (action, name, Box::new(|h, m| remove(h, m))),
             "rotate" => (action, name, Box::new(|h, m| rotate(h, m))),
             other => return usage(&format!("module {other:?}: add, remove, rotate or purge")),
@@ -336,6 +336,14 @@ fn module(paths: &Paths, rest: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// What an added module got, one line each; its warnings for the caller.
+fn print_gets(added: agent::modules::Added) -> Vec<String> {
+    for g in &added.gets {
+        println!("gets {g}");
+    }
+    added.warnings
 }
 
 /// The module's name, typed by the person to confirm a purge.

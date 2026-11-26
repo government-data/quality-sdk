@@ -301,3 +301,43 @@ fn a_new_version_gets_its_new_needs_and_twice_is_once() {
     assert!(notes[0].ends_with(" bi,bi_cache"), "{}", notes[0]);
     assert_eq!(notes[1], notes[3]);
 }
+
+/// Invented: an orchestrator whose machine client asks for the core's own
+/// audience beside its consumed capability's.
+const ORCH: &str =
+    "requires: { capabilities: [{ name: sql-query, version: 1, protocols: [q] }] }\n\
+    oidc:\n  machine: { capabilities: [sql-query], audiences: [quality-jobs, trino] }\n";
+
+#[test]
+fn declared_audiences_and_the_requires_go_with_the_machine_client_and_are_shown() {
+    let mut f = Fake::new(&[("quality-data", ""), ("query-trino", TRINO)]).with_index("orch", ORCH);
+    f.provision = FakeProvision::with_features(&ALL);
+    let added = add(&f, "orch").unwrap();
+    let sent = f.provision.sent.borrow();
+    let machine = sent[0].machine.as_ref().unwrap();
+    assert_eq!(machine.audiences, ["trino", "quality-jobs"], "each once");
+    assert_eq!(machine.requires, ["sql-query"]);
+    assert_eq!(
+        added.gets,
+        ["an OIDC machine client with the audiences: trino, quality-jobs"]
+    );
+}
+
+#[test]
+fn without_declared_audiences_the_machine_client_names_no_requires() {
+    let f = fake();
+    let added = add(&f, "bi").unwrap();
+    let sent = f.provision.sent.borrow();
+    let machine = sent[0].machine.as_ref().unwrap();
+    assert_eq!(machine.audiences, ["trino"]);
+    assert!(machine.requires.is_empty(), "the body every core reads");
+    assert_eq!(
+        added.gets,
+        [
+            "secret files: secret-key",
+            "PostgreSQL role bi with databases: bi",
+            "an OIDC client people sign in through",
+            "an OIDC machine client with the audiences: trino",
+        ]
+    );
+}
