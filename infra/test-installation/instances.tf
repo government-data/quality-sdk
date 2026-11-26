@@ -24,19 +24,23 @@ resource "aws_key_pair" "person" {
 
 locals {
   internal_domain = var.internal_domain != "" ? var.internal_domain : "internal.${var.app_domain}"
-  # A fixed private address, so the clusters' /etc/hosts names it before
-  # the master exists.
+  # Fixed private addresses, so each machine's /etc/hosts names the others
+  # before they exist.
   master_ip = cidrhost(aws_subnet.public.cidr_block, 10)
-  # On the clusters: APP_DOMAIN and the internal name are the master's
-  # private address, so the join and renewal stay inside the VPC.
-  cluster_init = <<-EOT
-    #cloud-config
-    write_files:
-      - path: /etc/hosts
-        append: true
-        content: |
-          ${local.master_ip} ${var.app_domain} ${local.internal_domain}
-  EOT
+  lake_ip   = cidrhost(aws_subnet.public.cidr_block, 11)
+  # APP_DOMAIN and the internal name are the master's private address, so
+  # the join and renewal stay inside the VPC; the lake's name (its S3 and
+  # catalog) and admin.<its name> (its admin adapter, decision 0091 ruling
+  # 72) are the lake's, on its one port.
+  hosts = {
+    master       = "${local.lake_ip} ${var.lake_name} admin.${var.lake_name}"
+    lake         = "${local.master_ip} ${var.app_domain} ${local.internal_domain}"
+    trino-worker = <<-EOT
+      ${local.master_ip} ${var.app_domain} ${local.internal_domain}
+      ${local.lake_ip} ${var.lake_name} admin.${var.lake_name}
+    EOT
+  }
+  private_ip = { master = local.master_ip, lake = local.lake_ip }
 }
 
 resource "aws_instance" "machine" {
@@ -44,10 +48,18 @@ resource "aws_instance" "machine" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = each.value.instance_type
   subnet_id              = aws_subnet.public.id
-  private_ip             = each.key == "master" ? local.master_ip : null
+  private_ip             = lookup(local.private_ip, each.key, null)
   vpc_security_group_ids = [aws_security_group.machine[each.key].id]
   key_name               = aws_key_pair.person.key_name
-  user_data              = each.key == "master" ? null : local.cluster_init
+  user_data = join("\n", [
+    "#cloud-config",
+    "write_files:",
+    "  - path: /etc/hosts",
+    "    append: true",
+    "    content: |",
+    "      ${indent(6, trimspace(local.hosts[each.key]))}",
+    "",
+  ])
 
   metadata_options {
     http_endpoint               = "enabled"

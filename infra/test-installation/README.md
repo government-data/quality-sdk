@@ -23,7 +23,10 @@ master; the lake's one port, 443 (its gate and its admin adapter behind
 it), from the master and the worker; no PostgreSQL port. Out: 443 and 80
 to the internet, and the ports above to their groups. On the clusters cloud-init adds `app_domain`
 and the internal name (`internal.<app_domain>` unless set) to `/etc/hosts`
-as the master's private address; the public record for the browser is the
+as the master's private address; on the master and the worker it adds the
+lake's name (`lake_name`, `lake-1` unless set: the name the lake joins
+with) and `admin.<lake_name>` (its admin adapter, behind the same 443) as
+the lake's private address. The public record for the browser is the
 person's.
 
 Costs money while it runs: destroy it after the test.

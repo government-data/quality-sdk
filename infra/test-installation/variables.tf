@@ -58,6 +58,16 @@ variable "internal_domain" {
   default     = ""
 }
 
+variable "lake_name" {
+  description = "The lake machine's name, the one it joins with and its certificate carries; the master and the worker resolve it and admin.<it> to the lake's private address."
+  type        = string
+  default     = "lake-1"
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", var.lake_name))
+    error_message = "lake_name is a machine name: lowercase letters, digits and hyphens, 1 to 63."
+  }
+}
+
 variable "ports" {
   description = "The ports between the machines, as decisions 0011 and 0012 steps 9 and 10 publish them: the master's one port (443: the web, the join, and by host name its internal routes and the lake gate's check), the Trino coordinator's and the worker's HTTP ports, and the lake's one port (443: its gate, S3 and the Iceberg REST catalog, and its admin adapter, routed inside by host name or path)."
   type = object({
