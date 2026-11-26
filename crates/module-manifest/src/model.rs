@@ -38,6 +38,10 @@ pub struct Manifest {
     /// module has no work to drain).
     #[serde(default)]
     pub drain: Option<Drain>,
+    /// Where the core asks the module whether another (or itself) may be
+    /// removed (decision 0015; none: it never refuses).
+    #[serde(default)]
+    pub removal: Option<Removal>,
     /// Where it is served to people (none: it is not).
     #[serde(default)]
     pub route: Option<Route>,
@@ -147,6 +151,15 @@ pub struct ConsumerHold {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Drain {
+    /// Absolute (`/` first), without a query: the core adds it.
+    pub path: String,
+}
+
+/// The module's removal check (decision 0015), on its route of the
+/// `internal` entry point, as [`Drain`].
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Removal {
     /// Absolute (`/` first), without a query: the core adds it.
     pub path: String,
 }
@@ -293,8 +306,9 @@ impl Manifest {
     /// [`crate::ONESHOT_AGENT`] for `health.oneshot` (decision 0002);
     /// [`crate::MACHINE_AUDIENCES_AGENT`] for `oidc.machine.audiences`
     /// (decision 0009); [`crate::ROLE_SECRETS_AGENT`] for
-    /// `topology.roles[].secrets` (decision 0013); none for a manifest that
-    /// uses none of them.
+    /// `topology.roles[].secrets` (decision 0013); [`crate::REMOVAL_AGENT`]
+    /// for `removal` (decision 0015); none for a manifest that uses none of
+    /// them.
     pub fn agent_needed(&self) -> Option<semver::Version> {
         let module_add = self.oidc.is_some()
             || self.permissions.is_some()
@@ -319,6 +333,9 @@ impl Manifest {
             (!self.health.oneshot.is_empty()).then(|| version(crate::ONESHOT_AGENT)),
             audiences.then(|| version(crate::MACHINE_AUDIENCES_AGENT)),
             role_secrets.then(|| version(crate::ROLE_SECRETS_AGENT)),
+            self.removal
+                .is_some()
+                .then(|| version(crate::REMOVAL_AGENT)),
         ];
         needed.into_iter().flatten().max()
     }

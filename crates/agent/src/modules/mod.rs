@@ -8,7 +8,8 @@
 //!   optional one warns), puts its package and images, brings it up, writes
 //!   its route, waits for its health and tells quality-data.
 //! - **remove** refuses while an installed module requires a capability
-//!   only this one provides (naming both); otherwise it brings it down
+//!   only this one provides (naming both), or while an installed module
+//!   refuses it ([`removal`], decision 0015); otherwise it brings it down
 //!   (its volumes kept), takes it out of what is installed, removes its
 //!   route and tells quality-data. Its package, `.env` and data stay.
 //!
@@ -33,6 +34,7 @@ pub mod provision;
 pub mod provisioner;
 pub mod purge;
 mod purge_files;
+pub mod removal;
 pub mod rotate;
 
 pub use provision::{Progress, Provision};
@@ -241,6 +243,9 @@ pub fn remove(host: &dyn ModuleHost, module: &str) -> Result<Warnings, String> {
         return Err(format!("not removed: {}", refused.join("; ")));
     }
     let manifest = host.manifest(module)?;
+    if is_installed {
+        removal::check(host, module, manifest.as_ref(), &manifests)?;
+    }
     host.down(module)?;
     if is_installed {
         let mut modules = installed.modules.clone();

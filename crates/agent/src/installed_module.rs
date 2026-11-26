@@ -27,6 +27,8 @@ impl Features {
     /// `PUT /updater/v1/modules/{module}/role-secrets` (decision 0013,
     /// ruling 44).
     pub const ROLE_SECRETS: &'static str = "role-secrets";
+    /// `GET /updater/v1/removal/{module}` (decision 0015).
+    pub const MODULE_REMOVAL: &'static str = "module-removal";
 
     pub fn has(&self, feature: &str) -> bool {
         self.0.contains(feature)
@@ -41,6 +43,9 @@ pub struct InstalledModule {
     /// Its manifest's `drain.path`, which the module serves on its route of
     /// the `internal` entry point (`null`: no work to drain).
     pub drain_path: Option<String>,
+    /// Its manifest's `removal.path` (decision 0015), left out when none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub removal_path: Option<String>,
     /// Its route's path on the web entry point (`null`: no route).
     pub route_path: Option<String>,
     /// Its entry in the core's apps menu (`null`: none).
@@ -116,6 +121,9 @@ impl InstalledModule {
             drain_path: manifest
                 .and_then(|m| m.drain.as_ref())
                 .map(|d| d.path.clone()),
+            removal_path: manifest
+                .and_then(|m| m.removal.as_ref())
+                .map(|r| r.path.clone()),
             route_path: route.map(|r| r.path.clone()),
             menu,
             permissions: manifest

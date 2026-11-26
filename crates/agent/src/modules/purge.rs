@@ -56,6 +56,10 @@ pub fn purge(host: &dyn ModuleHost, module: &str, confirm: &str) -> Result<Warni
         let adding = progress.as_ref().is_some_and(|pr| pr.operation == "adding");
         if installed.modules.contains_key(module) || adding {
             warnings.extend(remove(host, module)?);
+        } else {
+            let manifests = super::manifests(host, installed.modules.keys())?;
+            let m = host.manifest(module)?;
+            super::removal::check(host, module, m.as_ref(), &manifests)?;
         }
     }
     let manifest = host.manifest(module)?;

@@ -72,6 +72,12 @@ pub trait Provision {
     fn purge_backup(&self, m: &Manifest, warnings: &mut Vec<String>) -> Result<PathBuf, String>;
     /// `DELETE /updater/v1/modules/{module}`.
     fn delete_module(&self, module: &str) -> Result<(), String>;
+    /// `GET /updater/v1/removal/{module}`: the installed modules' refusals
+    /// of its removal (decision 0015).
+    fn removal_refusals(
+        &self,
+        module: &str,
+    ) -> Result<Vec<crate::api::modules::RemovalRefusal>, String>;
     /// The databases dropped with their sessions, then the role.
     fn drop_database(&self, role: &str, databases: &[String]) -> Result<(), String>;
     /// The module's Compose volumes, then its folder, removed.

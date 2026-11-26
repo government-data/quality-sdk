@@ -26,6 +26,8 @@ pub(crate) struct FakeProvision {
     pub(crate) core_down: RefCell<bool>,
     /// The purge's backup fails (a critical piece).
     pub(crate) backup_fails: RefCell<bool>,
+    /// What `GET /updater/v1/removal/{module}` answers.
+    pub(crate) refusals: RefCell<Vec<crate::api::modules::RemovalRefusal>>,
     /// Saving this step's progress fails, as a crash right before it.
     pub(crate) crash_at: RefCell<Option<String>>,
     counter: RefCell<u32>,
@@ -202,6 +204,16 @@ impl Provision for FakeProvision {
         }
         self.note(format!("delete_module {module}"));
         Ok(())
+    }
+    fn removal_refusals(
+        &self,
+        module: &str,
+    ) -> Result<Vec<crate::api::modules::RemovalRefusal>, String> {
+        if *self.core_down.borrow() {
+            return Err("quality-data does not answer".into());
+        }
+        self.note(format!("removal {module}"));
+        Ok(self.refusals.borrow().clone())
     }
     fn drop_database(&self, role: &str, dbs: &[String]) -> Result<(), String> {
         self.note(format!("drop_database {role} {}", dbs.join(",")));

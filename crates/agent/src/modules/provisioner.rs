@@ -168,6 +168,12 @@ impl Provision for Provisioner {
     fn delete_module(&self, module: &str) -> Result<(), String> {
         self.api()?.delete_module(module)
     }
+    fn removal_refusals(
+        &self,
+        module: &str,
+    ) -> Result<Vec<crate::api::modules::RemovalRefusal>, String> {
+        self.api()?.removal_refusals(module)
+    }
     fn drop_database(&self, role: &str, databases: &[String]) -> Result<(), String> {
         self.postgres.drop_module(role, databases)
     }

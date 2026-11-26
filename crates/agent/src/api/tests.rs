@@ -434,3 +434,17 @@ fn a_module_s_role_secrets_are_put_and_an_error_names_no_value() {
     assert!(!err.contains("invented-value"));
     assert!(api(&base).put_role_secrets("../x", &body).is_err());
 }
+
+#[test]
+fn a_module_s_removal_path_is_sent_and_none_is_left_out() {
+    let text = "name: orchestrator\nversion: 1.0.0\nremoval: { path: /internal/removal }\n";
+    let m = module_manifest::Manifest::parse(text).unwrap();
+    let told = InstalledModule::new("orchestrator", "1.0.0", Some(&m), &Features::default());
+    let body = serde_json::to_value(&told).unwrap();
+    assert_eq!(body["removal_path"], "/internal/removal");
+    let plain = InstalledModule::new("docs", "0.2.0", None, &Features::default());
+    assert!(serde_json::to_value(&plain)
+        .unwrap()
+        .get("removal_path")
+        .is_none());
+}
