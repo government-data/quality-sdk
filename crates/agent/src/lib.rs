@@ -16,11 +16,13 @@ pub mod enrol;
 #[cfg(test)]
 mod fake_exec;
 pub mod host;
+pub mod host_ports;
 pub mod install;
 pub mod installed_module;
 pub mod manifests;
 pub mod module_data;
 pub mod module_database;
+pub mod module_events;
 pub mod module_roles;
 pub mod module_secrets;
 pub mod modules;

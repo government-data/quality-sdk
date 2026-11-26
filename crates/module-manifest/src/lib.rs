@@ -107,4 +107,4 @@ pub const REMOVAL_AGENT: &str = "0.12.0";
 /// `consumes.events` and tells them to the core (decision 0017): an older
 /// one accepts the keys but tells none, so the core would refuse the
 /// module's events.
-pub const EVENTS_AGENT: &str = "0.10.0";
+pub const EVENTS_AGENT: &str = "0.13.0";

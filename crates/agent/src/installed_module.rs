@@ -24,6 +24,9 @@ impl Features {
     pub const AGENT_AUDIT: &'static str = "agent-audit";
     /// `PUT /updater/v1/registry` (decision 0013).
     pub const REGISTRY_CREDENTIALS: &'static str = "registry-credentials";
+    /// `events` in `PUT /updater/v1/modules` and the events routes
+    /// (decision 0017).
+    pub const MODULE_EVENTS: &'static str = "module-events";
     /// `PUT /updater/v1/modules/{module}/role-secrets` (decision 0013,
     /// ruling 44).
     pub const ROLE_SECRETS: &'static str = "role-secrets";
@@ -64,6 +67,11 @@ pub struct InstalledModule {
     /// module's `compose.yml`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub roles: Vec<crate::module_roles::ModuleRole>,
+    /// The topics it provides, with their schemas, and consumes (decision
+    /// 0017; absent: none; a core without `module-events` ignores it). Set
+    /// by the host, which reads the schemas from the package.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub events: Option<crate::module_events::ModuleEvents>,
 }
 
 /// A module's menu entry as `PUT /updater/v1/modules` names it: its label
@@ -139,6 +147,7 @@ impl InstalledModule {
                 })
                 .unwrap_or_default(),
             roles: Vec::new(),
+            events: None,
         }
     }
 }

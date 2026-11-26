@@ -126,6 +126,25 @@ pub fn check_features(m: &Manifest, features: &Features) -> Result<(), String> {
     Ok(())
 }
 
+/// A warning when `m` declares events and quality-data does not take
+/// them (decision 0017): it keeps none of its topics, so it refuses what
+/// the module publishes and reads.
+pub fn events_warning(m: &Manifest, features: Result<Features, String>) -> Option<String> {
+    let missing = |why: String| {
+        Some(format!(
+            "{} declares events, which {why}: it needs a quality-data whose updater/v1 \
+             has the feature {:?}",
+            m.name,
+            Features::MODULE_EVENTS
+        ))
+    };
+    match features {
+        Ok(f) if f.has(Features::MODULE_EVENTS) => None,
+        Ok(_) => missing("this quality-data does not take".into()),
+        Err(e) => missing(format!("quality-data may not take ({e})")),
+    }
+}
+
 /// The audiences of the machine client: each consumed capability's
 /// `token-audience`, as its provider among `installed` declares it, then
 /// those the manifest declares (`oidc.machine.audiences`), each once.
