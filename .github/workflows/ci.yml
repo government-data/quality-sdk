@@ -1,13 +1,14 @@
-# Checks on every push to main and every pull request (AGENTS.md, "Checks
-# before a commit"). Public repository: GitHub-hosted runners only, read-only
-# token, no AWS credentials. Publishing (decision 0001) is a separate workflow
-# on v* tags.
+# Checks on every push to main, every pull request and every merge queue
+# group (AGENTS.md, "Checks before a commit"). Public repository:
+# GitHub-hosted runners only, read-only token, no AWS credentials. Publishing
+# (decision 0001) is a separate workflow on v* tags.
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
 
 permissions:
   contents: read

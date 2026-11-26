@@ -67,6 +67,7 @@ pub const REPLICA_BACKUP_AGENT: &str = "0.5.0";
 pub const SECRET_KIND_AGENT: &str = "0.4.0";
 
 /// The first agent version that tells the core a module's `topology`
-/// roles (decision 0013): an older one accepts the key and tells none, so
-/// the role's machines would get nothing.
-pub const ROLES_AGENT: &str = "0.7.0";
+/// roles with their images and files (decision 0013): 0.7.0 told the
+/// images only, and an older one tells none, so the role's machines would
+/// get nothing or not all they run.
+pub const ROLES_AGENT: &str = "0.8.0";

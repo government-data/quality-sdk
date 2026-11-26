@@ -4,11 +4,15 @@
 //! the `IMAGE_*` lines the agent wrote into its `.env` from the signed
 //! index. A role whose images cannot all be told is left out, with a
 //! warning: the core then refuses its machines rather than hand them part
-//! of what they run.
+//! of what they run. Each role also carries its files ([`crate::role_files`]):
+//! `compose.yml` and what its services bind mount from the package; above
+//! [`MAX_MODULE_BYTES`] for the module, none of its roles is told.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use module_manifest::{Manifest, Role};
+
+use crate::role_files::{self, Package, RoleFile, MAX_MODULE_BYTES};
 use serde::{Deserialize, Serialize};
 
 /// A role as the core is told it.
@@ -19,6 +23,8 @@ pub struct ModuleRole {
     pub services: Vec<String>,
     /// Each pinned by digest, sorted, once.
     pub images: Vec<String>,
+    /// `compose.yml` and the package files its services mount, sorted.
+    pub files: Vec<RoleFile>,
 }
 
 #[derive(Deserialize)]
@@ -31,11 +37,19 @@ struct ComposeFile {
 struct Service {
     #[serde(default)]
     image: Option<String>,
+    #[serde(default)]
+    volumes: Vec<serde_json::Value>,
 }
 
 /// The roles of `manifest` (none without `topology`), from the module's
-/// `compose.yml` and `.env` texts.
-pub fn derive(module: &str, manifest: &Manifest, compose: &str, env: &str) -> Vec<ModuleRole> {
+/// `compose.yml` and `.env` texts and the package it was put from.
+pub fn derive(
+    module: &str,
+    manifest: &Manifest,
+    compose: &str,
+    env: &str,
+    package: &dyn Package,
+) -> Vec<ModuleRole> {
     let Some(topology) = &manifest.topology else {
         return Vec::new();
     };
@@ -47,22 +61,56 @@ pub fn derive(module: &str, manifest: &Manifest, compose: &str, env: &str) -> Ve
         }
     };
     let env = variables(env);
-    topology
+    let told: Vec<ModuleRole> = topology
         .roles
         .iter()
-        .filter_map(|role| match images(role, &services, &env) {
-            Ok(images) => Some(ModuleRole {
-                name: role.name.clone(),
-                strategy: role.strategy.as_str().into(),
-                services: role.services.clone(),
-                images,
-            }),
-            Err(why) => {
+        .filter_map(|role| {
+            let made = images(role, &services, &env).and_then(|images| {
+                let files = files(role, &services, compose, package)?;
+                Ok(ModuleRole {
+                    name: role.name.clone(),
+                    strategy: role.strategy.as_str().into(),
+                    services: role.services.clone(),
+                    images,
+                    files,
+                })
+            });
+            made.map_err(|why| {
                 tracing::warn!(%module, role = %role.name, "the role is not told: {why}");
-                None
-            }
+            })
+            .ok()
         })
-        .collect()
+        .collect();
+    let distinct: BTreeMap<&str, usize> = told
+        .iter()
+        .flat_map(|r| r.files.iter().map(|f| (f.path.as_str(), f.size)))
+        .collect();
+    let bytes: usize = distinct.values().sum();
+    if bytes > MAX_MODULE_BYTES {
+        tracing::warn!(
+            %module,
+            bytes,
+            "its roles are not told: their files are above {MAX_MODULE_BYTES} bytes"
+        );
+        return Vec::new();
+    }
+    told
+}
+
+/// `compose.yml` and the package files the role's services mount.
+fn files(
+    role: &Role,
+    services: &BTreeMap<String, Service>,
+    compose: &str,
+    package: &dyn Package,
+) -> Result<Vec<RoleFile>, String> {
+    let mut paths = Vec::new();
+    for name in &role.services {
+        if let Some(service) = services.get(name) {
+            paths.extend(role_files::mounted(&service.volumes)?);
+        }
+    }
+    role_files::collect(compose, &paths, package)
 }
 
 /// The images of the role's services, or why one cannot be told.

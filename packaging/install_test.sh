@@ -239,11 +239,28 @@ check "PostgreSQL's password file is its user's (uid 70)" \
 check "the database URL is the API's user's (uid 65532)" \
   grep -q "owner 65532: $MOD/secrets/database_url" "$WORK/out"
 check "Dolt's two passwords are the API's user's (uid 65532), 43 base64url characters" bash -c \
-  "grep -q 'owner 65532: .*dolt-root-password .*dolt-app-password' '$WORK/out' &&
+  "grep -q 'owner 65532: .*/dolt-root-password$' '$WORK/out' &&
+   grep -q 'owner 65532: .*/dolt-app-password$' '$WORK/out' &&
    grep -Eqx '[A-Za-z0-9_-]{43}' '$MOD/secrets/dolt-root-password' &&
    grep -Eqx '[A-Za-z0-9_-]{43}' '$MOD/secrets/dolt-app-password' &&
    test $(mode "$MOD/secrets/dolt-app-password") = 400 &&
    ! cmp -s '$MOD/secrets/dolt-root-password' '$MOD/secrets/dolt-app-password'"
+check "the lake's STS issuer's keys: 16 and 32 bytes base64url, 0400, the API's user's" bash -c \
+  "grep -Eqx '[A-Za-z0-9_-]{22}' '$MOD/secrets/rustfs-sts-issuer-access-key' &&
+   grep -Eqx '[A-Za-z0-9_-]{43}' '$MOD/secrets/rustfs-sts-issuer-secret-key' &&
+   test $(mode "$MOD/secrets/rustfs-sts-issuer-access-key") = 400 &&
+   test $(mode "$MOD/secrets/rustfs-sts-issuer-secret-key") = 400 &&
+   grep -q 'owner 65532: .*/rustfs-sts-issuer-access-key$' '$WORK/out' &&
+   grep -q 'owner 65532: .*/rustfs-sts-issuer-secret-key$' '$WORK/out'"
+check "the OIDC signing keys: PKCS#8 in base64, Ed25519 and P-256, no newline, 0400" bash -c \
+  "base64 -d '$MOD/secrets/oidc-signing-key' | openssl pkey -inform DER -noout -text | grep -q ED25519 &&
+   base64 -d '$MOD/secrets/oidc-signing-key-es256' | openssl pkey -inform DER -noout -text | grep -q prime256v1 &&
+   base64 -d '$MOD/secrets/oidc-signing-key' | openssl pkcs8 -nocrypt -inform DER >/dev/null &&
+   base64 -d '$MOD/secrets/oidc-signing-key-es256' | openssl pkcs8 -nocrypt -inform DER >/dev/null &&
+   test \$(wc -l <'$MOD/secrets/oidc-signing-key') = 0 &&
+   test \$(wc -l <'$MOD/secrets/oidc-signing-key-es256') = 0 &&
+   test $(mode "$MOD/secrets/oidc-signing-key") = 400 &&
+   grep -q 'owner 65532: .*/oidc-signing-key-es256$' '$WORK/out'"
 check "the secrets are 0400 in a folder the containers can read (0755)" bash -c \
   "test $(mode "$MOD/secrets/database_url") = 400 && test $(mode "$MOD/secrets") = 755 && test $(mode "$MOD") = 755"
 check "/opt/quality-data is only crossed (0711); /etc/quality-data is 0700" bash -c \
@@ -260,6 +277,7 @@ check "qd is a link to quality-data-agent beside it" \
 
 cp "$MOD/.env" "$WORK/env.before"
 cp "$MOD/secrets/dolt-app-password" "$WORK/dolt.before"
+cp "$MOD/secrets/oidc-signing-key" "$WORK/oidc.before"
 : >"$WORK/log"
 run "${ARGS[@]}"
 check "run again it finishes (0)" test "$rc" = 0
@@ -267,6 +285,7 @@ check "run again it neither installs nor runs a command" \
   bash -c "! grep -Eq '^agent|ca-init|up --detach|run --rm' '$WORK/log'"
 check "run again the .env and its passwords are kept" cmp -s "$WORK/env.before" "$MOD/.env"
 check "run again Dolt's password is kept" cmp -s "$WORK/dolt.before" "$MOD/secrets/dolt-app-password"
+check "run again the OIDC signing key is kept" cmp -s "$WORK/oidc.before" "$MOD/secrets/oidc-signing-key"
 check "run again qd is still the link to quality-data-agent" \
   test "$(readlink "$ROOT/usr/local/bin/qd")" = quality-data-agent
 check "without --admin-email it says how to get the administrator's link" grep -q -- '--admin-email' "$WORK/out"
