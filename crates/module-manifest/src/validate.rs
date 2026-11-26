@@ -106,6 +106,7 @@ impl Manifest {
         )?;
         crate::route::validate(self.route.as_ref(), self.auth, self.menu.as_ref())?;
         crate::topology::validate(self.topology.as_ref())?;
+        crate::events::validate(&self.name, &self.provides.events, &self.consumes.events)?;
         crate::secrets::validate_secrets(&self.secrets)?;
         crate::secrets::validate_created(&self.name, &self.data.databases)?;
         let declared = crate::permissions::validate(&self.name, self.permissions.as_ref())?;

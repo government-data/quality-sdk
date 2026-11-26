@@ -18,11 +18,16 @@
 //! Its machine roles (`topology`, decision 0013): the services each role
 //! runs on a joined machine and how those machines are updated.
 //!
+//! Its events (`provides.events`, `consumes.events`, decision 0017): the
+//! topics it publishes with their schema files, and the topics it reads.
+//!
 //! Pure: it reads text and answers values. Reading `module.yaml`, backing
 //! up and checking health belong to the agent.
 
 mod checks;
+mod data;
 mod error;
+mod events;
 mod model;
 mod oidc;
 mod permissions;
@@ -33,6 +38,9 @@ mod validate;
 
 pub use checks::{lost_on_removal, unmet, Loss, Unmet, Why};
 pub use error::ManifestError;
+pub use events::{
+    ConsumedEvent, Consumes, ProvidedEvent, CORE_TOPIC_PREFIX, MAX_EVENTS, MAX_TOPIC_LEN,
+};
 pub use model::{
     Backup, Check, ConsumerHold, Data, Database, Drain, Health, Key, Manifest, ProvidedCapability,
     ProviderHold, Provides, Removal, RequiredCapability, Requires, Volume, CHECK_TIMEOUT_SECS,
@@ -94,3 +102,9 @@ pub const ROLE_SECRETS_AGENT: &str = "0.11.0";
 /// a module is removed or purged (decision 0015): an older agent refuses
 /// the key.
 pub const REMOVAL_AGENT: &str = "0.12.0";
+
+/// The first agent version that reads `provides.events` and
+/// `consumes.events` and tells them to the core (decision 0017): an older
+/// one accepts the keys but tells none, so the core would refuse the
+/// module's events.
+pub const EVENTS_AGENT: &str = "0.10.0";
