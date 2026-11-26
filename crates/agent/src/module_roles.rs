@@ -6,7 +6,9 @@
 //! warning: the core then refuses its machines rather than hand them part
 //! of what they run. Each role also carries its files ([`crate::role_files`]):
 //! `compose.yml` and what its services bind mount from the package; above
-//! [`MAX_MODULE_BYTES`] for the module, none of its roles is told.
+//! [`MAX_MODULE_BYTES`] for the module, none of its roles is told. Each
+//! role carries `env`, the `IMAGE_*` values its `compose.yml` reads (ruling
+//! 44); its declared secrets go to the core apart ([`crate::role_secrets`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -25,7 +27,14 @@ pub struct ModuleRole {
     pub images: Vec<String>,
     /// `compose.yml` and the package files its services mount, sorted.
     pub files: Vec<RoleFile>,
+    /// The `IMAGE_*` values `compose.yml` reads, as the `.env` sets them:
+    /// not secret.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
 }
+
+/// The most `IMAGE_*` values a role carries.
+pub const MAX_ROLE_ENV: usize = 32;
 
 #[derive(Deserialize)]
 struct ComposeFile {
@@ -61,6 +70,7 @@ pub fn derive(
         }
     };
     let env = variables(env);
+    let image_env = image_env(compose, &env);
     let told: Vec<ModuleRole> = topology
         .roles
         .iter()
@@ -73,6 +83,7 @@ pub fn derive(
                     services: role.services.clone(),
                     images,
                     files,
+                    env: image_env.clone()?,
                 })
             });
             made.map_err(|why| {
@@ -138,6 +149,36 @@ fn images(
         images.insert(image);
     }
     Ok(images.into_iter().collect())
+}
+
+/// Each `IMAGE_*` variable `compose` reads (`${IMAGE_…`) that `env` sets,
+/// with its value, which must be pinned by digest; at most
+/// [`MAX_ROLE_ENV`]. One the `.env` does not set is left out (a service
+/// that needs it leaves its role out by [`images`]).
+fn image_env(
+    compose: &str,
+    env: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>, String> {
+    let mut found = BTreeMap::new();
+    for (at, _) in compose.match_indices("${IMAGE_") {
+        let name: String = compose[at + 2..]
+            .chars()
+            .take_while(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || *c == '_')
+            .collect();
+        let Some(value) = env.get(&name).filter(|v| !v.is_empty()) else {
+            continue;
+        };
+        if !pinned(value) {
+            return Err(format!("{name} is not pinned by digest"));
+        }
+        found.insert(name, value.clone());
+    }
+    if found.len() > MAX_ROLE_ENV {
+        return Err(format!(
+            "compose.yml reads more than {MAX_ROLE_ENV} IMAGE_* values"
+        ));
+    }
+    Ok(found)
 }
 
 /// `written` itself, or the variable it is (`${NAME}`, `${NAME:?…}`,

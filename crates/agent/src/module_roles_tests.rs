@@ -228,3 +228,25 @@ fn above_256_kib_the_module_tells_no_role() {
         .insert("compose/rustfs-tls.sh".into(), vec![b'x'; fits + 1]);
     assert!(derive("lake-rustfs", &m, MOUNTS, &env(), &big).is_empty());
 }
+
+#[test]
+fn a_role_carries_the_image_values_compose_reads() {
+    let m = manifest("    - { name: lake-gate, services: [gate], strategy: one }\n");
+    let role = derive("lake-rustfs", &m, COMPOSE, &env(), &Fake::default()).remove(0);
+    let names: Vec<&str> = role.env.keys().map(String::as_str).collect();
+    assert_eq!(names, ["IMAGE_ADMIN", "IMAGE_GATE", "IMAGE_RUSTFS"]);
+    assert_eq!(
+        role.env["IMAGE_GATE"],
+        format!("r.example/lake/gate@sha256:{}", digest('b'))
+    );
+    assert!(!role.env.contains_key("PORT"), "only IMAGE_* values");
+    // One the .env does not set is left out; one not pinned leaves the role out.
+    let unset = env().replace("IMAGE_ADMIN=", "OTHER=");
+    let role = derive("lake-rustfs", &m, COMPOSE, &unset, &Fake::default()).remove(0);
+    assert!(!role.env.contains_key("IMAGE_ADMIN"));
+    let tagged = env().replace(
+        &format!("IMAGE_ADMIN=r.example/lake/admin@sha256:{}", digest('a')),
+        "IMAGE_ADMIN=r.example/lake/admin:1",
+    );
+    assert!(derive("lake-rustfs", &m, COMPOSE, &tagged, &Fake::default()).is_empty());
+}

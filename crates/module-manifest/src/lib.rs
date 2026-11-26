@@ -48,7 +48,9 @@ pub use secrets::{
     database_prefix, GeneratedSecret, SecretContent, SecretKind, Secrets, DATABASE_PASSWORD,
     ISSUED_SECRETS, MAX_CREATED_DATABASES, OIDC_MACHINE_SECRET, OIDC_PEOPLE_SECRET, SECRET_BYTES,
 };
-pub use topology::{Role, Strategy, Topology, MAX_ROLES, MAX_ROLE_SERVICES, RESERVED_ROLES};
+pub use topology::{
+    Role, Strategy, Topology, MAX_ROLES, MAX_ROLE_SECRETS, MAX_ROLE_SERVICES, RESERVED_ROLES,
+};
 pub use validate::RESERVED_MODULE_NAMES;
 
 /// The first agent version that reads what a module gets at `module add`
@@ -81,3 +83,9 @@ pub const ONESHOT_AGENT: &str = "0.9.0";
 /// the module's `requires` with its machine client (decision 0009, rulings
 /// 30 and 47): an older agent refuses the key.
 pub const MACHINE_AUDIENCES_AGENT: &str = "0.10.0";
+
+/// The first agent version that reads `topology.roles[].secrets` and hands
+/// those secrets, with the role's `IMAGE_*` values, to the core for the
+/// role's machines (decision 0013, ruling 44): an older agent refuses the
+/// key.
+pub const ROLE_SECRETS_AGENT: &str = "0.11.0";

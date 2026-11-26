@@ -102,6 +102,13 @@ pub trait Api {
     /// The `features` of `GET /updater/v1/version`: what the core
     /// understands beyond the first calls (decision 0009).
     fn features(&self) -> Result<Features, String>;
+    /// `PUT /updater/v1/modules/{module}/role-secrets`: the values of its
+    /// roles' declared secrets, never logged (decision 0013).
+    fn put_role_secrets(
+        &self,
+        module: &str,
+        secrets: &crate::role_secrets::RoleSecrets,
+    ) -> Result<(), String>;
     /// `GET /updater/v1/modules/{module}/replica`: what the core says of
     /// the replica of the installed module's data.
     fn replica(&self, module: &str) -> Result<ReplicaState, String>;
@@ -196,22 +203,48 @@ impl AgentHost {
             tracing::debug!("quality-data's features are not known ({err}): none");
             Features::default()
         });
-        compose.installed().and_then(|i| {
-            let modules = i
-                .modules
-                .iter()
-                .map(|(name, m)| {
-                    let manifest = compose.manifest(name)?;
-                    let mut told =
-                        InstalledModule::new(name, &m.version, manifest.as_ref(), &features);
-                    if let Some(manifest) = &manifest {
-                        told.roles = compose.roles(name, manifest);
-                    }
-                    Ok(told)
-                })
-                .collect::<Result<Vec<_>, String>>()?;
-            self.adapters.api.put_modules(&modules)
-        })
+        let i = compose.installed()?;
+        let mut manifests = Vec::new();
+        let modules = i
+            .modules
+            .iter()
+            .map(|(name, m)| {
+                let manifest = compose.manifest(name)?;
+                let mut told = InstalledModule::new(name, &m.version, manifest.as_ref(), &features);
+                if let Some(manifest) = manifest {
+                    told.roles = compose.roles(name, &manifest);
+                    manifests.push(manifest);
+                }
+                Ok(told)
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        self.adapters.api.put_modules(&modules)?;
+        if features.has(Features::ROLE_SECRETS) {
+            self.hand_role_secrets(&modules, &manifests)?;
+        }
+        Ok(())
+    }
+
+    /// Each module's roles' declared secrets to the core, after the list
+    /// that names its roles (decision 0013, ruling 44).
+    fn hand_role_secrets(
+        &self,
+        modules: &[InstalledModule],
+        manifests: &[Manifest],
+    ) -> Result<(), String> {
+        let provision = &self.adapters.provision;
+        for manifest in manifests {
+            let Some(told) = modules.iter().find(|m| m.name == manifest.name) else {
+                continue;
+            };
+            let read = |name: &str| provision.secret(&manifest.name, name);
+            if let Some(body) =
+                crate::role_secrets::of(&manifest.name, manifest, &told.roles, &read)
+            {
+                self.adapters.api.put_role_secrets(&manifest.name, &body)?;
+            }
+        }
+        Ok(())
     }
 
     /// [`AgentHost::tell_modules`] when quality-data has not been told them
