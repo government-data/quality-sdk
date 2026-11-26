@@ -1,0 +1,14 @@
+# A stand-in of query-trino for tools/verify/module-bi-superset.sh: it
+# provides sql-query with the protocols bi-superset requires and the token
+# audience its machine client gets (decision 0009, point 3). No Trino runs:
+# the check signs people in, it does not query. Never published.
+name: qsvtrino
+version: 1.0.0
+provides:
+  capabilities:
+    - name: sql-query
+      version: 1
+      protocols: [trino-client-protocol, mtls-internal]
+      properties: { token-audience: trino }
+health:
+  services: [coordinator]
