@@ -316,6 +316,7 @@ fn a_module_s_roles_are_sent_as_the_core_reads_them_and_none_is_not_sent() {
             "compose.yml",
             b"services: {}\n",
         )],
+        env: [("IMAGE_RUSTFS".to_string(), image.clone())].into(),
     }];
     let body = serde_json::to_value(&m).unwrap();
     assert_eq!(
@@ -330,6 +331,7 @@ fn a_module_s_roles_are_sent_as_the_core_reads_them_and_none_is_not_sent() {
                 "sha256": "fa6ccea1ca4e3a031d9e99f25cc05db803aa9bac642c000ddab14f6d9da54b52",
                 "content_base64": "c2VydmljZXM6IHt9Cg==",
             }],
+            "env": { "IMAGE_RUSTFS": image },
         }])
     );
 }
@@ -405,4 +407,30 @@ fn the_registry_token_is_put_and_a_refusal_does_not_repeat_it() {
     let err = api(&base).put_registry(&token).unwrap_err();
     assert!(err.contains("400 expires_at: too far"), "{err}");
     assert!(!err.contains("secret-password"));
+}
+
+#[test]
+fn a_module_s_role_secrets_are_put_and_an_error_names_no_value() {
+    use crate::module_secrets::Secret;
+    use crate::role_secrets::RoleSecrets;
+    let mut body = RoleSecrets::default();
+    body.roles.insert(
+        "trino-worker".into(),
+        [("shared".to_string(), Secret::new("invented-value".into()))].into(),
+    );
+    let path = "PUT /updater/v1/modules/engine-trino/role-secrets";
+    let (base, sent) = server(&[(path, 204, "")]);
+    api(&base).put_role_secrets("engine-trino", &body).unwrap();
+    let got: serde_json::Value = serde_json::from_str(&sent.lock().unwrap()[0].2).unwrap();
+    assert_eq!(
+        got,
+        json!({ "roles": { "trino-worker": { "shared": "invented-value" } } })
+    );
+    let (base, _) = server(&[(path, 400, r#"{"error":"roles: no such role"}"#)]);
+    let err = api(&base)
+        .put_role_secrets("engine-trino", &body)
+        .unwrap_err();
+    assert!(err.contains("400 roles: no such role"), "{err}");
+    assert!(!err.contains("invented-value"));
+    assert!(api(&base).put_role_secrets("../x", &body).is_err());
 }

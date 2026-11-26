@@ -88,7 +88,7 @@ pub struct AuditEvent {
 }
 
 /// A module name as a path segment.
-fn segment(module: &str) -> Result<&str, String> {
+pub(super) fn segment(module: &str) -> Result<&str, String> {
     let ok = !module.is_empty()
         && module
             .chars()

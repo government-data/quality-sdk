@@ -14,6 +14,7 @@
 //! | `PUT /updater/v1/modules` | which modules are installed (after a start, and when the agent starts) |
 //! | `POST /updater/v1/request` | "Update now" for a person on the server (`update`, decision 0007) |
 //! | `PUT /updater/v1/registry` | the registry's token for the clusters ([`crate::registry`], decision 0013) |
+//! | `PUT /updater/v1/modules/{module}/role-secrets` | a module's roles' secrets ([`crate::role_secrets`], decision 0013) |
 //! | a module's clients, purge and audit | [`modules`] (decision 0009) |
 
 use std::time::Duration;
@@ -194,6 +195,18 @@ impl Api for UpdaterApi {
     fn put_modules(&self, modules: &[InstalledModule]) -> Result<(), String> {
         let body = json!({ "modules": modules });
         self.call("PUT", "/modules", Some(&body)).map(|_| ())
+    }
+
+    /// The body holds the secrets' values: sent, never logged, and an
+    /// error says only the call and quality-data's answer.
+    fn put_role_secrets(
+        &self,
+        module: &str,
+        secrets: &crate::role_secrets::RoleSecrets,
+    ) -> Result<(), String> {
+        let path = format!("/modules/{}/role-secrets", modules::segment(module)?);
+        let body = serde_json::to_value(secrets).map_err(|e| e.to_string())?;
+        self.call("PUT", &path, Some(&body)).map(|_| ())
     }
 
     /// A core that predates `features` answers without it: none.

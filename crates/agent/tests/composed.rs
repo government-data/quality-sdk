@@ -33,6 +33,9 @@ struct World {
     /// Restoring the database fails.
     restore_fails: Cell<bool>,
     now: Cell<i64>,
+    /// quality-data lists `role-secrets`, and its manifest declares a role
+    /// with a secret.
+    role_secrets: Cell<bool>,
 }
 
 impl World {
@@ -121,8 +124,31 @@ impl Compose for FakeCompose {
         Ok(())
     }
     fn manifest(&self, module: &str) -> Result<Option<Manifest>, String> {
-        let text = format!("name: {module}\nversion: 1.0.0\ndrain: {{ path: /internal/drain }}\n");
+        let mut text =
+            format!("name: {module}\nversion: 1.0.0\ndrain: {{ path: /internal/drain }}\n");
+        if self.0.role_secrets.get() {
+            text.push_str(
+                "topology: { roles: [{ name: worker, services: [api], strategy: one, \
+                 secrets: [shared] }] }\n",
+            );
+        }
         Ok((module == "quality-data").then(|| Manifest::parse(&text).unwrap()))
+    }
+    fn roles(&self, _module: &str, manifest: &Manifest) -> Vec<agent::module_roles::ModuleRole> {
+        let Some(t) = &manifest.topology else {
+            return Vec::new();
+        };
+        t.roles
+            .iter()
+            .map(|r| agent::module_roles::ModuleRole {
+                name: r.name.clone(),
+                strategy: r.strategy.as_str().into(),
+                services: r.services.clone(),
+                images: Vec::new(),
+                files: Vec::new(),
+                env: BTreeMap::new(),
+            })
+            .collect()
     }
 }
 
@@ -187,6 +213,23 @@ impl Api for FakeApi {
             ..Drain::default()
         })
     }
+    fn put_role_secrets(
+        &self,
+        module: &str,
+        secrets: &agent::role_secrets::RoleSecrets,
+    ) -> Result<(), String> {
+        let roles: Vec<String> = secrets
+            .roles
+            .iter()
+            .map(|(role, values)| {
+                let v: Vec<&str> = values.values().map(|s| s.expose()).collect();
+                format!("{role}={}", v.join(","))
+            })
+            .collect();
+        self.0
+            .note(format!("api:role-secrets:{module}:{}", roles.join(";")));
+        Ok(())
+    }
     fn put_modules(&self, modules: &[InstalledModule]) -> Result<(), String> {
         if self.0.api_down.get() {
             return Err("connection refused".into());
@@ -202,7 +245,12 @@ impl Api for FakeApi {
         Ok(())
     }
     fn features(&self) -> Result<Features, String> {
-        Ok(Features::default())
+        let listed = if self.0.role_secrets.get() {
+            vec![Features::ROLE_SECRETS.to_string()]
+        } else {
+            Vec::new()
+        };
+        Ok(Features(listed.into_iter().collect()))
     }
     fn replica(&self, _module: &str) -> Result<ReplicaState, String> {
         Ok(ReplicaState::InSync)
@@ -390,5 +438,27 @@ fn a_restore_that_fails_leaves_every_module_stopped_and_is_reported() {
     world.calls.borrow_mut().clear();
     advance(&host, &mut s, Who::Service).unwrap();
     assert!(!world.did("compose:start"));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_role_s_secrets_follow_the_modules_list_only_for_a_core_that_takes_them() {
+    let (world, host, root) = host("role-secrets");
+    host.tell_modules();
+    assert!(!world.did("api:role-secrets"), "no role declares a secret");
+    world.role_secrets.set(true);
+    let dir = Paths::under(&root)
+        .install_dir()
+        .join("quality-data/secrets");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("shared"), "invented-value").unwrap();
+    world.calls.borrow_mut().clear();
+    host.tell_modules();
+    let calls = world.calls.borrow().clone();
+    assert!(calls[0].starts_with("api:modules:"), "{calls:?}");
+    assert_eq!(
+        calls[1],
+        "api:role-secrets:quality-data:worker=invented-value"
+    );
     std::fs::remove_dir_all(root).unwrap();
 }

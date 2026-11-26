@@ -13,6 +13,8 @@ use crate::ManifestError;
 pub const MAX_ROLES: usize = 16;
 /// The most services a role runs.
 pub const MAX_ROLE_SERVICES: usize = 32;
+/// The most secrets a role declares.
+pub const MAX_ROLE_SECRETS: usize = 32;
 /// Roles no module may declare: the master's own certificates, which
 /// never join (the core's `app` and the agent's `updater`).
 pub const RESERVED_ROLES: &[&str] = &["app", "updater"];
@@ -34,6 +36,10 @@ pub struct Role {
     /// Services of the module's `compose.yml`.
     pub services: Vec<String>,
     pub strategy: Strategy,
+    /// Names of the module's secret files (`secrets/<name>`) its machines
+    /// get from the core, over mTLS only (decision 0013, ruling 44).
+    #[serde(default)]
+    pub secrets: Vec<String>,
 }
 
 /// How the machines of a role are updated.
@@ -81,6 +87,28 @@ pub(crate) fn validate(topology: Option<&Topology>) -> Result<(), ManifestError>
             check_service(&what, s)?;
         }
         check_unique(&what, r.services.iter().map(String::as_str))?;
+        check_secrets(r)?;
     }
     check_unique("topology.roles", t.roles.iter().map(|r| r.name.as_str()))
+}
+
+/// At most [`MAX_ROLE_SECRETS`], each `[A-Za-z0-9._-]`, 1 to 64, once.
+fn check_secrets(r: &Role) -> Result<(), ManifestError> {
+    let what = format!("topology.roles {} secrets", r.name);
+    if r.secrets.len() > MAX_ROLE_SECRETS {
+        return Err(invalid(format!("{what}: at most {MAX_ROLE_SECRETS}")));
+    }
+    for s in &r.secrets {
+        let ok = (1..=64).contains(&s.len())
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+            && s != "."
+            && s != "..";
+        if !ok {
+            return Err(invalid(format!(
+                "{what}: {s:?}: 1 to 64 of [A-Za-z0-9._-], a file's name"
+            )));
+        }
+    }
+    check_unique(&what, r.secrets.iter().map(String::as_str))
 }
