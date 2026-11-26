@@ -3,7 +3,8 @@
 //! `tools/verify/compose.sh` and `tools/verify/module-data.sh` verified:
 //!
 //! - every module has containers, each `running` and, with a healthcheck,
-//!   `healthy` (`ps --all --format json`);
+//!   `healthy` (`ps --all --format json`), but for a service of
+//!   `health.oneshot` whose container `exited` with code 0;
 //! - each service `health.services` names has a container;
 //! - each of `health.checks` succeeds: `exec -T <service> <command>`, ended
 //!   by `timeout` after its `timeout_secs`.
@@ -23,6 +24,15 @@ struct Container {
     state: String,
     #[serde(rename = "Health", default)]
     health: String,
+    #[serde(rename = "ExitCode", default)]
+    exit_code: i64,
+}
+
+impl Container {
+    /// A one-shot service's container that ended well (decision 0002).
+    fn done(&self, oneshot: &[String]) -> bool {
+        self.state == "exited" && self.exit_code == 0 && oneshot.contains(&self.service)
+    }
 }
 
 /// The containers of `ps --format json`: one object per line (as Compose
@@ -47,10 +57,15 @@ impl DockerCompose {
     pub(super) fn sick(&self, module: &str) -> Result<Vec<String>, String> {
         let all = containers(&self.run(module, &["ps", "--all", "--format", "json"])?)?;
         let mut sick = Vec::new();
+        let manifest = crate::manifests::read(&self.install, module);
+        let oneshot = match &manifest {
+            Ok(Some(m)) => m.health.oneshot.clone(),
+            _ => Vec::new(),
+        };
         if all.is_empty() {
             sick.push(format!("{module} has no container"));
         }
-        for c in &all {
+        for c in all.iter().filter(|c| !c.done(&oneshot)) {
             if c.state != "running" || !(c.health.is_empty() || c.health == "healthy") {
                 let health = if c.health.is_empty() {
                     String::new()
@@ -60,7 +75,7 @@ impl DockerCompose {
                 sick.push(format!("{module}/{} is {}{health}", c.service, c.state));
             }
         }
-        match crate::manifests::read(&self.install, module) {
+        match manifest {
             Ok(Some(m)) => sick.extend(self.manifest_sick(module, &m.health, &all)),
             Ok(None) => {}
             Err(e) => sick.push(e),

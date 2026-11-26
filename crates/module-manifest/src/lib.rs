@@ -71,3 +71,8 @@ pub const SECRET_KIND_AGENT: &str = "0.4.0";
 /// images only, and an older one tells none, so the role's machines would
 /// get nothing or not all they run.
 pub const ROLES_AGENT: &str = "0.8.0";
+
+/// The first agent version that reads `health.oneshot` and takes a one-shot
+/// service's container that exited with code 0 as healthy (decision 0002,
+/// amended 2026-11-25): an older agent refuses the key.
+pub const ONESHOT_AGENT: &str = "0.9.0";

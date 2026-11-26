@@ -162,6 +162,12 @@ pub struct Health {
     /// Commands that must succeed.
     #[serde(default)]
     pub checks: Vec<Check>,
+    /// Services that run once and end, such as a migration before the
+    /// web service starts (decision 0002, amended 2026-11-25): a container
+    /// of one that exited with code 0 is healthy; one that exited with
+    /// another code, or is still running, is judged as any other.
+    #[serde(default)]
+    pub oneshot: Vec<String>,
 }
 
 /// A command run in a running container of a service: exit 0 is healthy.
@@ -283,8 +289,9 @@ impl Manifest {
     /// `oidc`, `secrets`, `data.databases[].create`, `menu.requires` or
     /// `permissions` (decision 0009); [`crate::SECRET_KIND_AGENT`] for a
     /// written `secrets.generate[].kind` (decision 0012);
-    /// [`crate::ROLES_AGENT`] for `topology` (decision 0013); none for a
-    /// manifest that uses none of them.
+    /// [`crate::ROLES_AGENT`] for `topology` (decision 0013);
+    /// [`crate::ONESHOT_AGENT`] for `health.oneshot` (decision 0002); none
+    /// for a manifest that uses none of them.
     pub fn agent_needed(&self) -> Option<semver::Version> {
         let module_add = self.oidc.is_some()
             || self.permissions.is_some()
@@ -300,6 +307,7 @@ impl Manifest {
             backup.then(|| version(crate::REPLICA_BACKUP_AGENT)),
             kind.then(|| version(crate::SECRET_KIND_AGENT)),
             self.topology.is_some().then(|| version(crate::ROLES_AGENT)),
+            (!self.health.oneshot.is_empty()).then(|| version(crate::ONESHOT_AGENT)),
         ];
         needed.into_iter().flatten().max()
     }

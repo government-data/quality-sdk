@@ -200,6 +200,17 @@ fn validate_health(h: &Health) -> Result<(), ManifestError> {
         check_service("health.services", s)?;
     }
     check_unique("health.services", h.services.iter().map(String::as_str))?;
+    for s in &h.oneshot {
+        check_service("health.oneshot", s)?;
+        // A one-shot's container ends: it cannot be one that must run, nor
+        // one a check is run in.
+        if h.services.contains(s) || h.checks.iter().any(|c| &c.service == s) {
+            return Err(invalid(format!(
+                "health.oneshot: {s} is also in health.services or health.checks"
+            )));
+        }
+    }
+    check_unique("health.oneshot", h.oneshot.iter().map(String::as_str))?;
     for c in &h.checks {
         check_service("health.checks", &c.service)?;
         if c.command.first().is_none_or(|p| p.trim().is_empty()) {

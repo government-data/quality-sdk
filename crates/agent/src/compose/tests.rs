@@ -345,3 +345,39 @@ fn start_writes_the_installed_modules_routes_and_removes_the_others() {
     assert!(routes.join("internal.yml").exists());
     std::fs::remove_dir_all(r).unwrap();
 }
+
+#[test]
+fn a_one_shot_service_s_container_that_exited_with_code_0_is_healthy() {
+    use crate::host::Compose;
+    let r = root("oneshot");
+    let current = r.join("opt/quality-data/quality-data/current");
+    std::fs::create_dir_all(&current).unwrap();
+    std::fs::write(
+        current.join("module.yaml"),
+        "name: quality-data\nversion: 1.3.0\nhealth:\n  services: [api]\n  oneshot: [migrate]\n",
+    )
+    .unwrap();
+    let lake = r#"{"Service":"rustfs","State":"running","Health":""}"#;
+    let api = r#"{"Service":"api","State":"running","Health":"","ExitCode":0}"#;
+    let healthy = |ps: String| {
+        let fake = Fake::default()
+            .answer("--project-name quality-data", Ok(ps.as_str()))
+            .answer("--project-name lake-rustfs", Ok(lake));
+        let c = compose(&r, fake);
+        c.put_version("1.3.0", &modules("1.3.0", 'a'), &[]).unwrap();
+        c.modules_healthy()
+    };
+    let exited = |service: &str, code: i64| {
+        format!(r#"{{"Service":"{service}","State":"exited","Health":"","ExitCode":{code}}}"#)
+    };
+    healthy(format!("{api}\n{}", exited("migrate", 0))).unwrap();
+    assert_eq!(
+        healthy(format!("{api}\n{}", exited("migrate", 2))).unwrap_err(),
+        "quality-data/migrate is exited"
+    );
+    assert_eq!(
+        healthy(format!("{api}\n{}", exited("worker", 0))).unwrap_err(),
+        "quality-data/worker is exited"
+    );
+    std::fs::remove_dir_all(r).unwrap();
+}
