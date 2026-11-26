@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use serde::de::IgnoredAny;
 use serde::Deserialize;
 
+pub use crate::data::{Backup, Data, Database, Key, Volume};
+use crate::events::{Consumes, ProvidedEvent};
 use crate::oidc::Oidc;
 use crate::permissions::Permissions;
 use crate::route::{Auth, Menu, Route};
@@ -64,11 +66,12 @@ pub struct Manifest {
     /// master).
     #[serde(default)]
     pub topology: Option<Topology>,
+    /// The events it reads (decision 0017).
+    #[serde(default)]
+    pub consumes: Consumes,
     // Sections later steps of decision 0002 define: accepted, not read yet.
     #[serde(default)]
     images: Option<IgnoredAny>,
-    #[serde(default)]
-    consumes: Option<IgnoredAny>,
     #[serde(default)]
     config: Option<IgnoredAny>,
     #[serde(default)]
@@ -81,11 +84,12 @@ pub struct Manifest {
 pub struct Provides {
     #[serde(default)]
     pub capabilities: Vec<ProvidedCapability>,
+    /// The topics it publishes (decision 0017).
+    #[serde(default)]
+    pub events: Vec<ProvidedEvent>,
     // Defined by later steps of decision 0002.
     #[serde(default)]
     apis: Option<IgnoredAny>,
-    #[serde(default)]
-    events: Option<IgnoredAny>,
 }
 
 /// A capability a module provides.
@@ -198,87 +202,6 @@ fn check_timeout() -> u64 {
     CHECK_TIMEOUT_SECS
 }
 
-/// A module's data. A critical piece is backed up before every update; one
-/// that is not (a cache) is kept on remove but not backed up.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Data {
-    #[serde(default)]
-    pub databases: Vec<Database>,
-    #[serde(default)]
-    pub volumes: Vec<Volume>,
-    #[serde(default)]
-    pub keys: Vec<Key>,
-}
-
-/// A database of the installation's PostgreSQL.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Database {
-    pub name: String,
-    /// The agent creates it, with the module's role (decision 0009).
-    #[serde(default)]
-    pub create: bool,
-    #[serde(default = "critical")]
-    pub critical: bool,
-}
-
-/// A Compose volume, read through a service whose container mounts it.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Volume {
-    /// Names it in the backup.
-    pub name: String,
-    pub service: String,
-    /// Where it is mounted in that service (absolute).
-    pub path: String,
-    #[serde(default = "critical")]
-    pub critical: bool,
-    /// How a critical volume is backed up before an update, as written:
-    /// `None` when the key is left out ([`Volume::backup`] reads it).
-    #[serde(default, rename = "backup")]
-    written_backup: Option<Backup>,
-}
-
-impl Volume {
-    /// How it is backed up: as written, [`Backup::Dump`] when left out.
-    pub fn backup(&self) -> Backup {
-        self.written_backup.unwrap_or_default()
-    }
-
-    /// Whether the manifest writes `backup`, `dump` or `replica`: a key an
-    /// agent older than [`crate::REPLICA_BACKUP_AGENT`] refuses.
-    pub fn backup_written(&self) -> bool {
-        self.written_backup.is_some()
-    }
-}
-
-/// How a critical volume is backed up (decision 0002).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Backup {
-    /// The agent copies it into the backup and checks the copy.
-    #[default]
-    Dump,
-    /// A replica in sync is its backup: the agent does not copy it, and
-    /// refuses the update unless the core says the replica is in sync.
-    Replica,
-}
-
-/// A file under the module's directory (`/opt/quality-data/<module>/`).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Key {
-    /// Relative to the module's directory.
-    pub path: String,
-    #[serde(default = "critical")]
-    pub critical: bool,
-}
-
-fn critical() -> bool {
-    true
-}
-
 impl Manifest {
     /// Parse and validate a manifest's text.
     pub fn parse(text: &str) -> Result<Self, ManifestError> {
@@ -331,6 +254,7 @@ impl Manifest {
             kind.then(|| version(crate::SECRET_KIND_AGENT)),
             self.topology.is_some().then(|| version(crate::ROLES_AGENT)),
             (!self.health.oneshot.is_empty()).then(|| version(crate::ONESHOT_AGENT)),
+            self.declares_events().then(|| version(crate::EVENTS_AGENT)),
             audiences.then(|| version(crate::MACHINE_AUDIENCES_AGENT)),
             role_secrets.then(|| version(crate::ROLE_SECRETS_AGENT)),
             self.removal
@@ -348,6 +272,11 @@ impl Manifest {
             .flat_map(|m| &m.audiences)
     }
 
+    /// Whether it provides or consumes any event (decision 0017).
+    pub fn declares_events(&self) -> bool {
+        !self.provides.events.is_empty() || !self.consumes.events.is_empty()
+    }
+
     /// The module's PostgreSQL role, when it has a database the agent
     /// creates: its name with `-` as `_`.
     pub fn database_role(&self) -> Option<String> {
@@ -361,41 +290,5 @@ impl ProviderHold {
     /// `ttl` in seconds (validated on parse).
     pub fn ttl_secs(&self) -> u64 {
         crate::validate::duration_secs(&self.ttl).unwrap_or(0)
-    }
-}
-
-impl Data {
-    /// The critical pieces: what a backup must cover.
-    pub fn critical(&self) -> Data {
-        Data {
-            databases: self
-                .databases
-                .iter()
-                .filter(|d| d.critical)
-                .cloned()
-                .collect(),
-            volumes: self
-                .volumes
-                .iter()
-                .filter(|v| v.critical)
-                .cloned()
-                .collect(),
-            keys: self.keys.iter().filter(|k| k.critical).cloned().collect(),
-        }
-    }
-
-    /// The critical pieces the agent copies into a backup: every critical
-    /// one but the volumes whose backup is a replica.
-    pub fn dumped(&self) -> Data {
-        let mut data = self.critical();
-        data.volumes.retain(|v| v.backup() == Backup::Dump);
-        data
-    }
-
-    /// The critical volumes whose backup is a replica in sync.
-    pub fn replicated(&self) -> impl Iterator<Item = &Volume> {
-        self.volumes
-            .iter()
-            .filter(|v| v.critical && v.backup() == Backup::Replica)
     }
 }
