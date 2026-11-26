@@ -26,7 +26,7 @@ use super::internal_files::{Contents, InternalFiles};
 /// Renewed when less than this is left.
 pub const RENEW_BEFORE: TimeDelta = TimeDelta::days(30);
 
-/// The core's path, after the API's base (`https://host:9443/api`).
+/// The core's path, after the API's base (`https://host/api`, 443).
 pub const PATH: &str = "/internal/machines/renew";
 
 /// What a round's check did.

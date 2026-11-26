@@ -17,8 +17,8 @@
 //! signing_helper = "/usr/local/bin/aws_signing_helper"   # optional
 //!
 //! [api]                        # optional: quality-data's `updater/v1`
-//! url = "https://quality-data.internal:9443/api"   # its `internal` entry point
-//! connect = "127.0.0.1:9443"   # optional: where to connect; the URL's host
+//! url = "https://quality-data.internal/api"   # its `internal` entry point, 443 by name
+//! connect = "127.0.0.1:443"   # optional: where to connect; the URL's host
 //!                              # stays the TLS name and the Host header
 //! ```
 //!

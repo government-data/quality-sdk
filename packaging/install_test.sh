@@ -228,7 +228,7 @@ check "the agent's three runs with the core's commands between them, in order" t
 check "the .env's certificate source is file, with no ACME contact" bash -c \
   "grep -qx 'QD_TLS_MODE=file' '$MOD/.env' && grep -qx 'ACME_EMAIL=' '$MOD/.env'"
 check "agent.toml names the installation and the internal entry point" \
-  grep -qx 'url = "https://app.internal:9443/api"' "$ROOT/etc/quality-data/agent.toml"
+  grep -qx 'url = "https://app.internal/api"' "$ROOT/etc/quality-data/agent.toml"
 check "the .env is 0600 and names the module's folder" \
   bash -c "test $(mode "$MOD/.env") = 600 && grep -qx 'QD_MODULE_DIR=$MOD' '$MOD/.env'"
 pw="$(sed -n 's/^APP_DB_PASSWORD=//p' "$MOD/.env")"
