@@ -127,6 +127,9 @@ pub fn add(host: &dyn ModuleHost, module: &str) -> Result<Added, String> {
     if manifest.oidc.is_some() || manifest.permissions.is_some() {
         provision::check_features(&manifest, &p.features()?)?;
     }
+    if manifest.declares_events() {
+        warnings.extend(provision::events_warning(&manifest, p.features()));
+    }
     let audiences = provision::audiences(&manifest, &manifests)?;
     let version = manifest.version.to_string();
     let step = std::cell::RefCell::new(String::from("prepared"));

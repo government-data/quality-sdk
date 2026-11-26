@@ -7,6 +7,7 @@ use updater::engine::Installed;
 use updater::state::Modules;
 
 use super::{DockerCompose, Record};
+use crate::module_events::ModuleEvents;
 use crate::module_roles::ModuleRole;
 
 impl DockerCompose {
@@ -92,6 +93,12 @@ impl crate::host::Compose for DockerCompose {
                 Vec::new()
             }
         }
+    }
+
+    /// From the package put in `current/`.
+    fn events(&self, module: &str, manifest: &Manifest) -> Option<ModuleEvents> {
+        let package = crate::role_files::Dir(self.install.join(module).join("current"));
+        crate::module_events::derive(module, manifest, &package)
     }
 
     /// Every module's health: its containers' Compose healthchecks, the
