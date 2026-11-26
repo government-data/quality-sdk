@@ -302,7 +302,6 @@ INTERNAL_DOMAIN=${A[machine-name]}
 QD_TLS_MODE=$TLS_MODE
 ACME_EMAIL=${A[acme-email]:-}
 OBS_VM=${A[machine-name]}
-TRAEFIK_LAKEGATE_PORT=9444
 POSTGRES_SERVER_NAME=${A[machine-name]}
 POSTGRES_PORT=5432
 POSTGRES_DB=quality_data
