@@ -278,8 +278,8 @@ profile_arn = "${A[profile-arn]}"
 role_arn = "${A[role-arn]}"
 
 [api]
-url = "https://${A[machine-name]}:9443/api"
-connect = "127.0.0.1:9443"
+url = "https://${A[machine-name]}/api"
+connect = "127.0.0.1:443"
 EOF
 chmod 0644 "$ETC/agent.toml.new" && mv -f "$ETC/agent.toml.new" "$ETC/agent.toml"
 
@@ -302,9 +302,6 @@ INTERNAL_DOMAIN=${A[machine-name]}
 QD_TLS_MODE=$TLS_MODE
 ACME_EMAIL=${A[acme-email]:-}
 OBS_VM=${A[machine-name]}
-TRAEFIK_INTERNAL_PORT=9443
-TRAEFIK_LAKEGATE_PORT=9444
-TRAEFIK_METRICS_PORT=9445
 POSTGRES_SERVER_NAME=${A[machine-name]}
 POSTGRES_PORT=5432
 POSTGRES_DB=quality_data
