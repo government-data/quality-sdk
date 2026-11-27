@@ -6,8 +6,9 @@
 # - the master's one port (443) from both clusters: the web, the join, and
 #   by host name the internal routes (renewal, the engine port) and the
 #   core's lake check, which the lake's gate asks before each request;
-# - the Trino coordinator's HTTP port (discovery) on the master from the
-#   worker; the worker's HTTP port from the master;
+# - the Trino coordinator's HTTPS port (discovery, 8490) on the master
+#   from the worker; the worker's one port (443: Trino with TLS) from the
+#   master;
 # - the lake's one port (443: its gate, S3 and the Iceberg REST catalog,
 #   and its admin adapter, routed inside by host name or path) from the
 #   master and the worker;

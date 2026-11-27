@@ -69,7 +69,7 @@ variable "lake_name" {
 }
 
 variable "ports" {
-  description = "The ports between the machines, as decisions 0011 and 0012 steps 9 and 10 publish them: the master's one port (443: the web, the join, and by host name its internal routes and the lake gate's check), the Trino coordinator's and the worker's HTTP ports, and the lake's one port (443: its gate, S3 and the Iceberg REST catalog, and its admin adapter, routed inside by host name or path)."
+  description = "The ports between the machines, as decisions 0011 and 0012 steps 9 and 10 publish them: the master's one port (443: the web, the join, and by host name its internal routes and the lake gate's check), the Trino coordinator's HTTPS port on the master (engine-trino's TRINO_PORT, 8490, while the core's gate holds 443), the worker's one port (443: Trino with TLS), and the lake's one port (443: its gate, S3 and the Iceberg REST catalog, and its admin adapter, routed inside by host name or path)."
   type = object({
     web         = number
     coordinator = number
@@ -78,8 +78,8 @@ variable "ports" {
   })
   default = {
     web         = 443
-    coordinator = 8080
-    worker      = 8080
+    coordinator = 8490
+    worker      = 443
     lake        = 443
   }
 }
