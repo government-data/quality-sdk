@@ -18,7 +18,8 @@ enrolment; the clusters do not enrol. Its state is local and apart from
 One security group per machine, rules by source group (`rules.tf`): SSH
 from `ssh_cidr` to each; the master's 443 from `ssh_cidr` and from both
 clusters (its internal routes and the lake gate's check are on 443 by host
-name); the coordinator's port from the worker and the worker's from the
+name); the Trino coordinator's port (8490, engine-trino's `TRINO_PORT`)
+from the worker; the worker's one port, 443 (Trino with TLS), from the
 master; the lake's one port, 443 (its gate and its admin adapter behind
 it), from the master and the worker; no PostgreSQL port. Out: 443 and 80
 to the internet, and the ports above to their groups. On the clusters cloud-init adds `app_domain`
@@ -48,8 +49,9 @@ terraform output ssh
 
 Check: the plan adds only the three instances, their disks, groups and
 rules, and destroys nothing it did not make. After the apply, from each
-cluster `curl` reaches the master's 443 and 9443 by `app_domain`, the
-lake also its 9444, and a port not listed is refused.
+cluster `curl` reaches the master's 443 by `app_domain`, the worker also
+the coordinator's 8490, the master the worker's 443 and the lake's 443,
+and a port not listed is refused.
 
 ## Destroy (a person, after the test)
 
