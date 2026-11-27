@@ -229,7 +229,9 @@ impl Manifest {
     /// [`crate::ONESHOT_AGENT`] for `health.oneshot` (decision 0002);
     /// [`crate::MACHINE_AUDIENCES_AGENT`] for `oidc.machine.audiences`
     /// (decision 0009); [`crate::ROLE_SECRETS_AGENT`] for
-    /// `topology.roles[].secrets` (decision 0013); [`crate::REMOVAL_AGENT`]
+    /// `topology.roles[].secrets` (decision 0013);
+    /// [`crate::ROLE_SECRETS_FROM_AGENT`] for a secret's `from` (ruling 96);
+    /// [`crate::REMOVAL_AGENT`]
     /// for `removal` (decision 0015); none for a manifest that uses none of
     /// them.
     pub fn agent_needed(&self) -> Option<semver::Version> {
@@ -242,11 +244,9 @@ impl Manifest {
         let backup = self.data.volumes.iter().any(Volume::backup_written);
         let kind = self.secrets.generate.iter().any(|g| g.kind.is_some());
         let audiences = self.machine_audiences().next().is_some();
-        let role_secrets = self
-            .topology
-            .iter()
-            .flat_map(|t| &t.roles)
-            .any(|r| !r.secrets.is_empty());
+        let roles = || self.topology.iter().flat_map(|t| &t.roles);
+        let role_secrets = roles().any(|r| !r.secrets.is_empty());
+        let shared = roles().flat_map(|r| &r.secrets).any(|s| s.from().is_some());
         let version = |v: &str| semver::Version::parse(v).expect("a version");
         let needed = [
             module_add.then(|| version(crate::MODULE_ADD_AGENT)),
@@ -257,6 +257,7 @@ impl Manifest {
             self.declares_events().then(|| version(crate::EVENTS_AGENT)),
             audiences.then(|| version(crate::MACHINE_AUDIENCES_AGENT)),
             role_secrets.then(|| version(crate::ROLE_SECRETS_AGENT)),
+            shared.then(|| version(crate::ROLE_SECRETS_FROM_AGENT)),
             self.removal
                 .is_some()
                 .then(|| version(crate::REMOVAL_AGENT)),

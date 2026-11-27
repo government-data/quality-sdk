@@ -105,7 +105,13 @@ impl Manifest {
             self.removal.as_ref().map(|r| r.path.as_str()),
         )?;
         crate::route::validate(self.route.as_ref(), self.auth, self.menu.as_ref())?;
-        crate::topology::validate(self.topology.as_ref())?;
+        let required: Vec<&str> = self
+            .requires
+            .capabilities
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        crate::topology::validate(self.topology.as_ref(), &required)?;
         crate::events::validate(&self.name, &self.provides.events, &self.consumes.events)?;
         crate::secrets::validate_secrets(&self.secrets)?;
         crate::secrets::validate_created(&self.name, &self.data.databases)?;

@@ -137,9 +137,9 @@ impl AgentHost {
             let Some(told) = modules.iter().find(|m| m.name == manifest.name) else {
                 continue;
             };
-            let read = |name: &str| provision.secret(&manifest.name, name);
+            let read = |owner: &str, name: &str| provision.secret(owner, name);
             if let Some(body) =
-                crate::role_secrets::of(&manifest.name, manifest, &told.roles, &read)
+                crate::role_secrets::of(&manifest.name, manifest, &told.roles, manifests, &read)
             {
                 self.adapters.api.put_role_secrets(&manifest.name, &body)?;
             }

@@ -57,7 +57,8 @@ pub use secrets::{
     ISSUED_SECRETS, MAX_CREATED_DATABASES, OIDC_MACHINE_SECRET, OIDC_PEOPLE_SECRET, SECRET_BYTES,
 };
 pub use topology::{
-    Role, Strategy, Topology, MAX_ROLES, MAX_ROLE_SECRETS, MAX_ROLE_SERVICES, RESERVED_ROLES,
+    Role, RoleSecret, SharedSecret, Strategy, Topology, MAX_ROLES, MAX_ROLE_SECRETS,
+    MAX_ROLE_SERVICES, RESERVED_ROLES,
 };
 pub use validate::RESERVED_MODULE_NAMES;
 
@@ -108,3 +109,8 @@ pub const REMOVAL_AGENT: &str = "0.12.0";
 /// one accepts the keys but tells none, so the core would refuse the
 /// module's events.
 pub const EVENTS_AGENT: &str = "0.13.0";
+
+/// The first agent version that reads `topology.roles[].secrets[].from`
+/// and hands a role the secret of the capability's provider (ruling 96):
+/// an older agent refuses the key.
+pub const ROLE_SECRETS_FROM_AGENT: &str = "0.14.0";
