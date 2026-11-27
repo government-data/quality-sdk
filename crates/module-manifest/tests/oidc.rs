@@ -165,7 +165,7 @@ fn a_machine_client_consumes_what_the_module_requires() {
     );
     refused(
         &bi_with("capabilities: [sql-query]", "capabilities: []"),
-        "capabilities: none",
+        "no capabilities and no audiences",
     );
     refused(
         &bi_with(

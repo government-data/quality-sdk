@@ -50,3 +50,12 @@ fn a_bad_audience_list_is_refused() {
         assert!(manifest(&text).is_err(), "{audiences}");
     }
 }
+
+#[test]
+fn audiences_alone_need_no_capability() {
+    let m = manifest("    capabilities: []\n    audiences: [core]\n").unwrap();
+    let audiences: Vec<&String> = m.machine_audiences().collect();
+    assert_eq!(audiences, ["core"]);
+    assert!(manifest("    audiences: [core]\n").is_ok());
+    assert!(manifest("    capabilities: []\n").is_err());
+}
