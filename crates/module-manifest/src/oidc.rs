@@ -97,7 +97,9 @@ pub struct RoleClaim {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OidcMachine {
-    /// The capabilities it consumes, each one of `requires.capabilities`.
+    /// The capabilities it consumes, each one of `requires.capabilities`;
+    /// none when its audiences are all it asks for.
+    #[serde(default)]
     pub capabilities: Vec<String>,
     /// Audiences it asks for beyond its capabilities' `token-audience`:
     /// the core's own (`quality-jobs`), which the core grants or refuses
@@ -208,8 +210,12 @@ fn validate_claim(claim: &RoleClaim, declared: &Declared<'_>) -> Result<(), Mani
 }
 
 fn validate_machine(m: &OidcMachine, required: &[&str]) -> Result<(), ManifestError> {
-    if m.capabilities.is_empty() {
-        return Err(invalid("oidc.machine.capabilities: none".into()));
+    // Audiences alone are enough (ruling 94): a client of the core's own
+    // routes consumes no capability.
+    if m.capabilities.is_empty() && m.audiences.is_empty() {
+        return Err(invalid(
+            "oidc.machine: no capabilities and no audiences".into(),
+        ));
     }
     let mut seen = BTreeSet::new();
     for c in &m.capabilities {
