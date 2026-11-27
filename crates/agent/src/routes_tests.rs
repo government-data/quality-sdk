@@ -20,7 +20,7 @@ const DOCS: &str = "route: { path: /docs, service: web, port: 8080 }\nauth: forw
 #[test]
 fn a_forward_route_names_the_core_s_chain_and_gate() {
     let m = manifest("docs", DOCS).unwrap();
-    let text = render("docs", m.route.as_ref().unwrap(), m.auth);
+    let text = render("docs", m.route.as_ref().unwrap(), m.auth, called_inside(&m));
     for line in [
         "{{ $domain := env \"APP_DOMAIN\" | default \"localhost\" }}",
         "{{ $resolver := \"letsencrypt\" }}{{ if eq (env \"QD_TLS_MODE\") \"file\" }}{{ $resolver = \"\" }}{{ end }}",
@@ -45,7 +45,7 @@ fn a_route_without_forward_has_no_gate_of_the_core() {
         "route: { path: /lake, service: console, port: 9001 }\n",
     ] {
         let m = manifest("lake-rustfs", rest).unwrap();
-        let text = render("lake-rustfs", m.route.as_ref().unwrap(), m.auth);
+        let text = render("lake-rustfs", m.route.as_ref().unwrap(), m.auth, false);
         assert!(
             text.contains("      middlewares: [module-chain@file]\n"),
             "{text}"
@@ -118,4 +118,43 @@ fn remove_takes_one_module_s_route_away() {
     assert!(!dir.join("module-docs.yml").exists());
     remove(&dir, "docs").unwrap();
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_module_the_core_calls_gets_a_router_on_the_internal_entry_point() {
+    assert!(!called_inside(&manifest("docs", DOCS).unwrap()));
+    let m = manifest(
+        "orchestrator",
+        "route: { path: /orchestrator, service: server, port: 8080 }\nauth: forward\n\
+         drain: { path: /internal/drain }\n",
+    )
+    .unwrap();
+    assert!(called_inside(&m));
+    let text = render("orchestrator", m.route.as_ref().unwrap(), m.auth, true);
+    for line in [
+        "    module-orchestrator-internal:",
+        "      rule: \"Host(`{{ env \"INTERNAL_DOMAIN\" | default \"internal.localhost\" }}`) && PathPrefix(`/modules/orchestrator/`)\"",
+        "      entryPoints: [internal]",
+        "        options: machines",
+        "      middlewares: [module-orchestrator-internal-strip, module-orchestrator-internal-certificate]",
+        "        prefixes: [\"/modules/orchestrator\"]",
+        "        pem: true",
+    ] {
+        assert!(text.lines().any(|l| l == line), "{line}\n---\n{text}");
+    }
+    assert!(
+        text.contains("  middlewares:\n    module-orchestrator-internal-strip:\n"),
+        "{text}"
+    );
+    for rest in [
+        "removal: { path: /internal/removal }\n",
+        "provides: { capabilities: [{ name: trino-cluster, version: 1, protocols: [trino] }] }\n",
+    ] {
+        let m = manifest(
+            "m",
+            &format!("route: {{ path: /m, service: s, port: 1 }}\n{rest}"),
+        )
+        .unwrap();
+        assert!(called_inside(&m), "{rest}");
+    }
 }

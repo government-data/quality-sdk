@@ -12,6 +12,14 @@
 //! `auth: forward`. The host and the certificate resolver come from
 //! Traefik's environment (`APP_DOMAIN`, `QD_TLS_MODE`), as the core's own
 //! `apps.yml`.
+//!
+//! A module that declares a drain or a removal check, or provides a
+//! capability, also gets a router on the `internal` entry point (ruling
+//! 95): `Host(<INTERNAL_DOMAIN>) && PathPrefix(/modules/<module>/)`, with
+//! the core's `machines` TLS options (a client certificate of the CA
+//! required), the prefix stripped and the verified certificate passed in
+//! `X-Forwarded-Tls-Client-Cert` (`passTLSClientCert`), to the same
+//! service as its route.
 
 use std::path::Path;
 
@@ -22,8 +30,15 @@ pub fn file_name(module: &str) -> String {
     format!("module-{module}.yml")
 }
 
-/// The route file of `module` serving `route`.
-pub fn render(module: &str, route: &Route, auth: Option<Auth>) -> String {
+/// Whether `m` is called by the core or by other machines on the internal
+/// entry point: a drain, a removal check or a capability it provides.
+pub fn called_inside(m: &Manifest) -> bool {
+    m.drain.is_some() || m.removal.is_some() || !m.provides.capabilities.is_empty()
+}
+
+/// The route file of `module` serving `route`, with its internal router
+/// when `inside`.
+pub fn render(module: &str, route: &Route, auth: Option<Auth>, inside: bool) -> String {
     let name = format!("module-{module}");
     let path = &route.path;
     let middlewares = match auth {
@@ -31,6 +46,11 @@ pub fn render(module: &str, route: &Route, auth: Option<Auth>) -> String {
         Some(Auth::Oidc) | None => "[module-chain@file]",
     };
     let server = format!("http://{module}-{}:{}", route.service, route.port);
+    let (internal_router, internal_middlewares) = if inside {
+        internal_parts(module, &name)
+    } else {
+        (String::new(), String::new())
+    };
     format!(
         r#"# Written by quality-data-agent from the module {module:?}'s manifest
 # (module.yaml); rewritten after every start, removed with the module.
@@ -46,13 +66,38 @@ http:
       priority: 50
       service: {name}
       middlewares: {middlewares}
-  services:
+{internal_router}  services:
     {name}:
       loadBalancer:
         servers:
           - url: "{server}"
-"#
+{internal_middlewares}"#
     )
+}
+
+/// The internal router and its middlewares (ruling 95).
+fn internal_parts(module: &str, name: &str) -> (String, String) {
+    let router = format!(
+        r#"    {name}-internal:
+      rule: "Host(`{{{{ env "INTERNAL_DOMAIN" | default "internal.localhost" }}}}`) && PathPrefix(`/modules/{module}/`)"
+      entryPoints: [internal]
+      tls:
+        options: machines
+      service: {name}
+      middlewares: [{name}-internal-strip, {name}-internal-certificate]
+"#
+    );
+    let middlewares = format!(
+        r#"  middlewares:
+    {name}-internal-strip:
+      stripPrefix:
+        prefixes: ["/modules/{module}"]
+    {name}-internal-certificate:
+      passTLSClientCert:
+        pem: true
+"#
+    );
+    (router, middlewares)
 }
 
 /// Write the route of every module of `installed` whose manifest has one
@@ -62,7 +107,11 @@ pub fn sync(dir: &Path, installed: &[(String, Option<Manifest>)]) -> Result<(), 
     for (module, manifest) in installed {
         let Some(m) = manifest else { continue };
         let Some(route) = &m.route else { continue };
-        write(dir, module, &render(module, route, m.auth))?;
+        write(
+            dir,
+            module,
+            &render(module, route, m.auth, called_inside(m)),
+        )?;
         keep.push(file_name(module));
     }
     let entries = match std::fs::read_dir(dir) {
