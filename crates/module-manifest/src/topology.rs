@@ -36,10 +36,47 @@ pub struct Role {
     /// Services of the module's `compose.yml`.
     pub services: Vec<String>,
     pub strategy: Strategy,
-    /// Names of the module's secret files (`secrets/<name>`) its machines
-    /// get from the core, over mTLS only (decision 0013, ruling 44).
+    /// The secrets its machines get from the core, over mTLS only
+    /// (decision 0013, ruling 44): each a file of the module's `secrets/`,
+    /// or of the provider of a required capability (ruling 96).
     #[serde(default)]
-    pub secrets: Vec<String>,
+    pub secrets: Vec<RoleSecret>,
+}
+
+/// A role's secret: `<name>`, the module's own `secrets/<name>`, or
+/// `{ name, from: <capability> }`, the `secrets/<name>` of the module that
+/// provides that capability, which the module requires (ruling 96).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum RoleSecret {
+    Own(String),
+    From(SharedSecret),
+}
+
+/// A secret a role takes from a capability's provider.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SharedSecret {
+    pub name: String,
+    pub from: String,
+}
+
+impl RoleSecret {
+    /// Its file's name, in the module's `secrets/` or the provider's.
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Own(name) => name,
+            Self::From(s) => &s.name,
+        }
+    }
+
+    /// The required capability whose provider has it; `None`, the module's.
+    pub fn from(&self) -> Option<&str> {
+        match self {
+            Self::Own(_) => None,
+            Self::From(s) => Some(&s.from),
+        }
+    }
 }
 
 /// How the machines of a role are updated.
@@ -62,7 +99,10 @@ impl Strategy {
     }
 }
 
-pub(crate) fn validate(topology: Option<&Topology>) -> Result<(), ManifestError> {
+pub(crate) fn validate(
+    topology: Option<&Topology>,
+    required: &[&str],
+) -> Result<(), ManifestError> {
     let Some(t) = topology else { return Ok(()) };
     if t.roles.len() > MAX_ROLES {
         return Err(invalid(format!(
@@ -87,18 +127,28 @@ pub(crate) fn validate(topology: Option<&Topology>) -> Result<(), ManifestError>
             check_service(&what, s)?;
         }
         check_unique(&what, r.services.iter().map(String::as_str))?;
-        check_secrets(r)?;
+        check_secrets(r, required)?;
     }
     check_unique("topology.roles", t.roles.iter().map(|r| r.name.as_str()))
 }
 
-/// At most [`MAX_ROLE_SECRETS`], each `[A-Za-z0-9._-]`, 1 to 64, once.
-fn check_secrets(r: &Role) -> Result<(), ManifestError> {
+/// At most [`MAX_ROLE_SECRETS`], each `[A-Za-z0-9._-]`, 1 to 64, once;
+/// a `from` one of the module's required capabilities.
+fn check_secrets(r: &Role, required: &[&str]) -> Result<(), ManifestError> {
     let what = format!("topology.roles {} secrets", r.name);
     if r.secrets.len() > MAX_ROLE_SECRETS {
         return Err(invalid(format!("{what}: at most {MAX_ROLE_SECRETS}")));
     }
-    for s in &r.secrets {
+    for secret in &r.secrets {
+        if let Some(from) = secret.from() {
+            if !required.contains(&from) {
+                return Err(invalid(format!(
+                    "{what}: {:?} from {from:?}, which is not in requires.capabilities",
+                    secret.name()
+                )));
+            }
+        }
+        let s = secret.name();
         let ok = (1..=64).contains(&s.len())
             && s.chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
@@ -110,5 +160,5 @@ fn check_secrets(r: &Role) -> Result<(), ManifestError> {
             )));
         }
     }
-    check_unique(&what, r.secrets.iter().map(String::as_str))
+    check_unique(&what, r.secrets.iter().map(RoleSecret::name))
 }

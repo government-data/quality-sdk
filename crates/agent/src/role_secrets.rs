@@ -9,11 +9,13 @@
 //! files. A secret that cannot be read, or that the core would refuse,
 //! leaves its role without secrets, with a warning naming module, role and
 //! secret: the role's machines then lack it, which is visible, rather than
-//! the whole call refused.
+//! the whole call refused. A secret declared `from` a required capability
+//! (ruling 96) is read from the `secrets/` of the installed module that
+//! provides it.
 
 use std::collections::BTreeMap;
 
-use module_manifest::Manifest;
+use module_manifest::{Manifest, RoleSecret};
 use serde::Serialize;
 
 use crate::module_roles::ModuleRole;
@@ -29,13 +31,15 @@ pub struct RoleSecrets {
 }
 
 /// The secrets of `manifest`'s roles among `told`, each read by `read`
-/// (the module's secret by its file's name); none when no role of the
-/// manifest declares any, so nothing is sent.
+/// (a module's secret by the module and its file's name: `module`'s own,
+/// or a `from` capability's provider among `installed`); none when no
+/// role of the manifest declares any, so nothing is sent.
 pub fn of(
     module: &str,
     manifest: &Manifest,
     told: &[ModuleRole],
-    read: &dyn Fn(&str) -> Result<Secret, String>,
+    installed: &[Manifest],
+    read: &dyn Fn(&str, &str) -> Result<Secret, String>,
 ) -> Option<RoleSecrets> {
     let roles = &manifest.topology.as_ref()?.roles;
     if roles.iter().all(|r| r.secrets.is_empty()) {
@@ -49,8 +53,10 @@ pub fn of(
         let values: Result<BTreeMap<String, Secret>, (String, String)> = role
             .secrets
             .iter()
-            .map(|name| {
-                let value = read(name).map_err(|e| (name.clone(), e))?;
+            .map(|secret| {
+                let name = secret.name().to_string();
+                let owner = owner(module, secret, installed).map_err(|e| (name.clone(), e))?;
+                let value = read(&owner, &name).map_err(|e| (name.clone(), e))?;
                 let v = value.expose();
                 if v.len() > MAX_VALUE || v.contains('\0') {
                     let why = format!("above {MAX_VALUE} bytes or with a NUL");
@@ -72,6 +78,19 @@ pub fn of(
         }
     }
     Some(body)
+}
+
+/// The module whose `secrets/` holds `secret`: `module`, or the installed
+/// provider of its `from` capability.
+fn owner(module: &str, secret: &RoleSecret, installed: &[Manifest]) -> Result<String, String> {
+    let Some(capability) = secret.from() else {
+        return Ok(module.to_string());
+    };
+    installed
+        .iter()
+        .find(|m| m.provides.capabilities.iter().any(|c| c.name == capability))
+        .map(|m| m.name.clone())
+        .ok_or_else(|| format!("no installed module provides {capability}"))
 }
 
 #[cfg(test)]
