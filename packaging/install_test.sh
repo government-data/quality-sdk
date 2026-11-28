@@ -134,6 +134,8 @@ run "${ARGS[@]}" --colour blue
 check "an unknown option is refused (2)" test "$rc" = 2
 run "${ARGS[@]}" --channel nightly
 check "a channel other than stable or patch is refused" test "$rc" = 2
+run "${ARGS[@]}" --address app.example
+check "an --address that is not an IP address is refused" bash -c "test $rc = 2 && grep -q -- '--address' '$WORK/out'"
 refused() { # refused NAME TEXT ARGS...: exit 2, saying TEXT
   run "${ARGS[@]}" "${@:3}"
   check "$1" bash -c "test $rc = 2 && grep -q -- '$2' '$WORK/out'"
@@ -221,12 +223,13 @@ check "the agent's install is not run before the enrolment" bash -c "! grep -Eq 
 
 # --- a whole install --------------------------------------------------------------------
 
-run "${ARGS[@]}" --certificate "$WORK/certificate.pem"
+run "${ARGS[@]}" --certificate "$WORK/certificate.pem" --address 10.0.0.5
 check "the install finishes (0)" test "$rc" = 0
 check "the agent's three runs with the core's commands between them, in order" test "$(order)" = \
   "agent --root $ROOT install;ca-init;up --detach --no-build postgres;run --rm --no-deps app-machine;agent --root $ROOT install;run --rm --no-deps updater-certificate;agent --root $ROOT install;"
 check "the .env's certificate source is file, with no ACME contact" bash -c \
   "grep -qx 'QD_TLS_MODE=file' '$MOD/.env' && grep -qx 'ACME_EMAIL=' '$MOD/.env'"
+check "the .env carries the server's --address" grep -qx 'QD_CORE_ADDRESS=10.0.0.5' "$MOD/.env"
 check "agent.toml names the installation and the internal entry point" \
   grep -qx 'url = "https://app.internal/api"' "$ROOT/etc/quality-data/agent.toml"
 check "the .env is 0600 and names the module's folder" \

@@ -10,7 +10,8 @@
 #     [--certificate signed.pem] [--channel stable] [--region us-east-1] \
 #     [--signing-helper FILE] [--version V] [--updater-name NAME] \
 #     [--tls-mode file|acme] [--tls-cert FILE --tls-key FILE] [--acme-email ADDRESS] \
-#     [--install-docker] [--admin-email ADDRESS] [--timezone ZONE] [--root DIR]
+#     [--install-docker] [--admin-email ADDRESS] [--timezone ZONE] [--root DIR] \
+#     [--address IP]
 #
 # 1. Docker and the system-wide Compose plugin, at least Docker Engine
 #    29.4.1 and Compose 5.1.3, or it refuses. With --install-docker and no
@@ -103,7 +104,7 @@ for k in "${!A[@]}"; do
   case "$k" in
   installation | channel | region | bucket | trust-anchor-arn | profile-arn | role-arn | index-key | \
     certificate | domain | machine-name | tls-mode | tls-cert | tls-key | acme-email | agent | signing-helper | \
-    version | updater-name | \
+    version | updater-name | address | \
     install-docker | admin-email | timezone | root) ;;
   *) die "unknown option --$k" ;;
   esac
@@ -112,6 +113,12 @@ for k in installation bucket trust-anchor-arn profile-arn role-arn domain machin
   [[ -n "${A[$k]:-}" ]] || die "--$k is required (--help)"
 done
 [[ "${A[channel]}" =~ ^(stable|patch)$ ]] || die "--channel is stable or patch"
+# This server's address, which the joined machines resolve its names to
+# (core ruling 106): an IPv4 or IPv6 address, no name.
+if [[ -n "${A[address]:-}" ]]; then
+  [[ "${A[address]}" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ || "${A[address]}" =~ ^[0-9A-Fa-f:]+$ ]] ||
+    die "--address is this server's IP address"
+fi
 TLS_MODE="${A[tls-mode]:-file}"
 case "$TLS_MODE" in
 file)
@@ -299,6 +306,7 @@ IMAGE_TRAEFIK=
 IMAGE_POSTGRES=
 APP_DOMAIN=${A[domain]}
 INTERNAL_DOMAIN=${A[machine-name]}
+QD_CORE_ADDRESS=${A[address]:-}
 QD_TLS_MODE=$TLS_MODE
 ACME_EMAIL=${A[acme-email]:-}
 OBS_VM=${A[machine-name]}
@@ -333,6 +341,7 @@ set_env() { # set_env KEY VALUE: that line of an existing .env
 }
 set_env QD_TLS_MODE "$TLS_MODE"
 set_env ACME_EMAIL "${A[acme-email]:-}"
+[[ -z "${A[address]:-}" ]] || set_env QD_CORE_ADDRESS "${A[address]}"
 if [[ ! -f "$MOD/secrets/postgres_superuser_password" ]]; then
   env_value POSTGRES_SUPERUSER_PASSWORD >"$MOD/secrets/postgres_superuser_password"
 fi
